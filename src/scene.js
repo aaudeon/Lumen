@@ -11,6 +11,8 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createRouteMotion, findWalkPreview } from './motion.js';
 import { createTileHazard, createCollapseEffects } from './hazards.js';
+import { createBoardTextures } from './board-textures.js';
+import { getBoardProfile, createBoardStructure, createTileScenery } from './boards.js';
 
 const GAP = 1.34;
 const DIR = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] };
@@ -88,6 +90,8 @@ export function createGameScene(host, callbacks) {
 
   const world = new THREE.Group();
   scene.add(world);
+  const scenery = new THREE.Group();
+  world.add(scenery);
   const tiles = new Map();
   const blankMarkers = [];
   const collapseEffects = createCollapseEffects({ THREE, world });
@@ -109,6 +113,7 @@ export function createGameScene(host, callbacks) {
   let heroHeading = 0;
   let currentLevel = null;
   let currentBiome = 'jungle';
+  let boardProfile = getBoardProfile('aube');
   let biomePalette = BIOME_PALETTES.jungle;
   let winTime = -100;
   let pendingSettle = false;
@@ -116,6 +121,8 @@ export function createGameScene(host, callbacks) {
   const materials = new Set();
   const geometries = new Set();
   const pixelTextures = createPixelTextures(THREE);
+  const boardTextures = createBoardTextures(THREE);
+  const architecture = createBoardStructure({ THREE, world, textures: boardTextures });
 
   function material(color, options = {}) {
     const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...options });
@@ -135,9 +142,9 @@ export function createGameScene(host, callbacks) {
     return mesh(new RoundedBoxGeometry(w, h, d, 2, radius), mat, parent, x, y, z);
   }
   function cellPosition(index) {
-    if (index === -1) return new THREE.Vector3(-3.02, 0.36, -1.5 * GAP);
-    if (index === 16) return new THREE.Vector3(3.04, 0.36, 1.5 * GAP);
-    return new THREE.Vector3((index % 4 - 1.5) * GAP, 0.36, (Math.floor(index / 4) - 1.5) * GAP);
+    if (index === -1) return new THREE.Vector3(-3.02 * boardProfile.sx, 0.36, -1.5 * GAP * boardProfile.sz);
+    if (index === 16) return new THREE.Vector3(3.04 * boardProfile.sx, 0.36, 1.5 * GAP * boardProfile.sz);
+    return new THREE.Vector3((index % 4 - 1.5) * GAP * boardProfile.sx, 0.36, (Math.floor(index / 4) - 1.5) * GAP * boardProfile.sz);
   }
   function heroPosition(index) {
     const position = cellPosition(index);
@@ -149,52 +156,12 @@ export function createGameScene(host, callbacks) {
   const baseMat = material(0xb5c2ae, { map: pixelTextures.stone });
   const rimMat = material(0xe3d1a8, { metalness: 0.1, map: pixelTextures.path });
   const darkMat = material(0x68746b, { map: pixelTextures.stone });
-  const leafMat = material(0x537b62, { flatShading: true });
-  const paleLeafMat = material(0x779672, { flatShading: true });
   const goldMat = material(palette.gold, { emissive: 0xc89340, emissiveIntensity: 0.4, metalness: 0.3, roughness: 0.35 });
-  box(world, 5.64, 0.45, 5.64, baseMat, 0, -0.22, 0, 0.12);
-  box(world, 5.72, 0.065, 5.72, rimMat, 0, -0.22, 0, 0.035);
-  box(world, 5.49, 0.38, 5.49, darkMat, 0, -0.53, 0, 0.12);
-  box(world, 5.21, 0.3, 5.21, rockMat, 0, -0.8, 0, 0.12);
-  for (let i = 0; i < 19; i++) {
-    const angle = i * 2.39996;
-    const radius = 1 + ((i * 17) % 10) / 10;
-    const rock = mesh(new THREE.DodecahedronGeometry(0.65 + (i % 4) * 0.18, 0), rockMat, world,
-      Math.cos(angle) * radius, -0.93 - (i % 3) * 0.27, Math.sin(angle) * radius);
-    rock.scale.set(1.0, 1.25, 0.9);
-    rock.rotation.set(i * 0.2, i, 0.5);
-  }
-  // Engraved sides make the board feel like a surviving piece of a larger temple.
-  for (let i = 0; i < 8; i++) {
-    box(world, 0.055, 0.1, 0.01, rimMat, -2.35 + i * 0.67, -0.075, 2.824, 0.004);
-    box(world, 0.01, 0.1, 0.055, rimMat, 2.824, -0.075, -2.35 + i * 0.67, 0.004);
-  }
-  for (const [x, z, height] of [[-2.69, 2.64, 0.72], [2.65, -2.63, 1.15], [-2.7, -2.7, 0.3]]) {
-    box(world, 0.45, 0.12, 0.45, baseMat, x, 0.08, z);
-    box(world, 0.25, height, 0.25, baseMat, x, height / 2 + 0.14, z, 0.03);
-    box(world, 0.36, 0.12, 0.36, rimMat, x, height + 0.17, z, 0.025);
-    mesh(new THREE.OctahedronGeometry(0.13), goldMat, world, x, height + 0.39, z);
-  }
-  const jungleDetails = new THREE.Group();
-  world.add(jungleDetails);
-  function shrub(x, y, z, scale = 1) {
-    for (let j = 0; j < 4; j++) {
-      const leaf = mesh(new THREE.IcosahedronGeometry(0.15 * scale, 0), j % 2 ? leafMat : paleLeafMat,
-        jungleDetails, x + Math.cos(j * 2.4) * 0.1, y + j * 0.038, z + Math.sin(j * 2.4) * 0.1);
-      leaf.scale.set(1, 0.65, 1);
-    }
-  }
-  [[-2.65, 0.05, 1.8], [1.7, 0.04, -2.66], [-2.63, 0.06, 2.62], [2.63, 0.04, -1.52], [1.3, -0.45, 2.72]].forEach(p => shrub(...p));
-  for (let i = 0; i < 15; i++) {
-    const vine = mesh(new THREE.IcosahedronGeometry(0.07, 0), i % 2 ? leafMat : paleLeafMat,
-      jungleDetails, -2.73 + Math.sin(i * 1.9) * 0.08, -i * 0.085, 1.68 + Math.cos(i) * 0.055);
-    vine.scale.y = 1.4;
-  }
 
   const startPosition = cellPosition(-1);
   const endPosition = cellPosition(16);
   const entryPlatform = box(world, 0.8, 0.28, 1.02, baseMat, startPosition.x - 0.04, 0.0, startPosition.z);
-  box(world, 0.8, 0.28, 1.02, baseMat, endPosition.x + 0.03, 0.0, endPosition.z);
+  const exitPlatform = box(world, 0.8, 0.28, 1.02, baseMat, endPosition.x + 0.03, 0.0, endPosition.z);
   const portal = new THREE.Group();
   portal.position.copy(endPosition).add(new THREE.Vector3(0.1, -0.21, 0));
   world.add(portal);
@@ -299,8 +266,8 @@ export function createGameScene(host, callbacks) {
   const sparks = new THREE.Points(sparksGeo, sparksMat);
   scene.add(sparks);
 
-  const jungle = createJungleEnvironment({ THREE, scene, world, textures: pixelTextures });
-  const biomeEnvironment = createBiomeEnvironment({ THREE, world, maps: pixelTextures });
+  const jungle = createJungleEnvironment({ THREE, scene, world: scenery, textures: pixelTextures });
+  const biomeEnvironment = createBiomeEnvironment({ THREE, world: scenery, maps: pixelTextures, boardTextures });
   const shaftMat = new THREE.ShaderMaterial({
     uniforms: { color: { value: new THREE.Color(0xffd286) } },
     vertexShader: 'varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
@@ -350,12 +317,29 @@ export function createGameScene(host, callbacks) {
 
   function buildTile(tile, index) {
     const group = new THREE.Group();
-    const tileMat = material(0xd1d3c0, { map: pixelTextures.stone });
-    const tileEdge = material(0x839281, { map: pixelTextures.stone });
-    const pathMat = material(0xf3dfb3, { map: pixelTextures.path, metalness: 0.05, roughness: 0.9 });
+    const variant = [...tile.id].reduce((sum, char) => sum + char.charCodeAt(0), boardProfile.variant) % 3;
+    const maps = boardTextures.get(boardProfile.biome, variant);
+    const tileMat = material(0xffffff, { map: maps.top, bumpMap: maps.top, bumpScale: .012, roughness: boardProfile.biome === 'atlantis' ? .46 : .92 });
+    const tileEdge = material(0xffffff, { map: maps.edge, bumpMap: maps.edge, bumpScale: .028 });
+    const pathMat = material(0xffffff, { map: maps.path, metalness: boardProfile.biome === 'atlantis' ? .18 : .04, roughness: .7 });
     const traceMat = material(0xeadcab, { emissive: 0x97ccb2, emissiveIntensity: 0.15 });
-    const edge = box(group, 1.25, 0.3, 1.25, tileEdge, 0, -0.19, 0, 0.065);
-    const top = box(group, 1.23, 0.145, 1.23, tileMat, 0, -0.05, 0, 0.045);
+    let edge, top;
+    if (boardProfile.biome === 'volcano') {
+      const shape = new THREE.Shape();
+      const cut = .12 + variant * .025;
+      [[-.62+cut,-.62],[.62-cut,-.62],[.62,-.62+cut],[.62,.62-cut],[.62-cut,.62],[-.62+cut,.62],[-.62,.62-cut],[-.62,-.62+cut]].forEach(([x,y],i) => i ? shape.lineTo(x,y) : shape.moveTo(x,y));
+      shape.closePath();
+      const slab = (height,surface,y) => {
+        const geometry = new THREE.ExtrudeGeometry(shape,{depth:height,bevelEnabled:false});
+        geometry.rotateX(-Math.PI/2);
+        return mesh(geometry,surface,group,0,y,0);
+      };
+      edge=slab(.29,tileEdge,-.34);top=slab(.13,tileMat,-.11);
+    } else {
+      edge = box(group, 1.25, 0.3, 1.25, tileEdge, 0, -0.19, 0, boardProfile.biome === 'atlantis' ? .09 : .045);
+      top = box(group, 1.23, 0.145, 1.23, tileMat, 0, -0.05, 0, boardProfile.biome === 'atlantis' ? .065 : .025);
+      if (boardProfile.biome === 'atlantis') box(group,1.255,.026,1.255,pathMat,0,-.115,0,.04);
+    }
     edge.userData.tileId = tile.id;
     top.userData.tileId = tile.id;
     // Broad stone walkways with fine luminous inlays make connections readable.
@@ -373,10 +357,8 @@ export function createGameScene(host, callbacks) {
       engraving.rotation.y = Math.PI / 4;
       box(group, 0.1, 0.013, 0.1, tileMat, 0, 0.035, 0, 0.02).rotation.y = Math.PI / 4;
     }
-    // Small corner studs and a weathered stone chip.
-    for (const [x, z] of [[-.49, -.49], [.49, .49]]) {
-      box(group, 0.07, 0.012, 0.07, tileEdge, x, 0.028, z, 0.008);
-    }
+    const details = createTileScenery({ THREE, tile, profile: boardProfile });
+    group.add(details.root);
     const numberCanvas = document.createElement('canvas');
     numberCanvas.width = numberCanvas.height = 64;
     const numberCtx = numberCanvas.getContext('2d');
@@ -408,16 +390,18 @@ export function createGameScene(host, callbacks) {
     });
     const hazard = createTileHazard({ THREE, tile });
     group.add(hazard.root);
+    group.scale.set(boardProfile.sx, 1, boardProfile.sz);
     group.position.copy(cellPosition(index));
     world.add(group);
     const data = { group, tileMat, tileEdge, pathMat, traceMat, target: cellPosition(index), index, texture, arrows,
-      hazard, tile, collapseDistance: null, fallStartedAt: null };
+      hazard, details, tile, collapseDistance: null, fallStartedAt: null };
     tiles.set(tile.id, data);
     return data;
   }
 
   function removeTile(id, data) {
     data.hazard.dispose();
+    data.details.dispose();
     world.remove(data.group);
     const oldMaterials = new Set();
     data.group.traverse(object => {
@@ -448,6 +432,7 @@ export function createGameScene(host, callbacks) {
     mode = nextMode;
     focus = selected;
     if (!next) return;
+    if (currentLevel !== next.id) setBoardProfile(getBoardProfile(next.levelId));
     const nextBiome = Object.hasOwn(BIOME_PALETTES, next.biome) ? next.biome : 'jungle';
     if (nextBiome !== currentBiome) setBiome(nextBiome);
     if (next !== previous) pendingSettle = true;
@@ -513,7 +498,6 @@ export function createGameScene(host, callbacks) {
     biomePalette = BIOME_PALETTES[kind];
     const color = biomePalette;
     jungle.setVisible(kind === 'jungle');
-    jungleDetails.visible = kind === 'jungle';
     biomeEnvironment.setBiome(kind);
     scene.fog.color.set(color.fog);
     scene.fog.density = color.fogDensity;
@@ -537,6 +521,28 @@ export function createGameScene(host, callbacks) {
     previewRingMaterial.color.set(color.connected);
     blankMat.color.set(color.dark);
     dustMaterial.color.set(kind === 'atlantis' ? 0x92c2c7 : kind === 'volcano' ? 0x967b73 : 0xab9d69);
+  }
+  function setBoardProfile(profile) {
+    const oldFit = Math.max(boardProfile.sx, boardProfile.sz);
+    boardProfile = profile;
+    architecture.setProfile(profile);
+    scenery.scale.set(profile.sx, 1, profile.sz);
+    const maps = boardTextures.get(profile.biome, profile.variant);
+    for (const [surface,map] of [[baseMat,maps.edge],[rimMat,maps.path],[darkMat,maps.edge],[rockMat,maps.edge]]) {
+      surface.map=map;surface.needsUpdate=true;
+    }
+    const entrance = cellPosition(-1), exit = cellPosition(16);
+    entryPlatform.position.set(entrance.x-.04,0,entrance.z);
+    exitPlatform.position.set(exit.x+.03,0,exit.z);
+    entryPlatform.scale.set(profile.sx,1,profile.sz);
+    exitPlatform.scale.set(profile.sx,1,profile.sz);
+    portal.position.copy(exit).add(new THREE.Vector3(.1,-.21,0));
+    for (const marker of blankMarkers) {
+      marker.group.position.copy(cellPosition(marker.index));
+      marker.group.position.y=.018;
+      marker.group.scale.set(profile.sx,1,profile.sz);
+    }
+    camera.position.multiplyScalar(Math.max(profile.sx,profile.sz)/oldFit);
   }
   function updateColors() {
     if (!state) return;
@@ -652,7 +658,7 @@ export function createGameScene(host, callbacks) {
     const frameDelta = Math.max(0, (now - lastTime) / 1000);
     const dt = Math.min(frameDelta, 0.05);
     lastTime = now;
-    const ideal = (topView ? new THREE.Vector3(0.01, 17.8, 0.9) : cameraTarget.clone()).multiplyScalar(cameraDistance);
+    const ideal = (topView ? new THREE.Vector3(0.01, 17.8, 0.9) : cameraTarget.clone()).multiplyScalar(cameraDistance * Math.max(boardProfile.sx,boardProfile.sz));
     if (cameraTransition) {
       camera.position.lerp(ideal, 1 - Math.exp(-frameDelta * 7));
       if (camera.position.distanceTo(ideal) < 0.01) cameraTransition = false;
@@ -731,6 +737,7 @@ export function createGameScene(host, callbacks) {
     previewRing.scale.setScalar(1 + Math.sin(time * 3.5) * .075);
     jungle.update(time, dt, camera);
     biomeEnvironment.update(time);
+    architecture.update(time);
     portalCrystal.rotation.y = time * 0.5;
     portalCrystal.position.y = 1.54 + Math.sin(time * 1.5) * 0.045;
     portalRing.rotation.z = time * 0.15;
@@ -789,9 +796,11 @@ export function createGameScene(host, callbacks) {
       controls.dispose();
       jungle.dispose();
       biomeEnvironment.dispose();
+      architecture.dispose();
       collapseEffects.dispose();
       explorer.dispose();
       pixelTextures.dispose();
+      boardTextures.dispose();
       renderPass.dispose();
       glowPass.dispose();
       outputPass.dispose();

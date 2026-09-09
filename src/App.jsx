@@ -4,6 +4,7 @@ import { GameAudio } from './audio.js';
 import HomeScreen from './HomeScreen.jsx';
 import { BIOMES, getBiome } from './campaign.js';
 import { directionalDestination } from './motion.js';
+import { getBoardProfile } from './boards.js';
 
 function Icon({ name, size = 20, ...props }) {
   const paths = {
@@ -92,6 +93,7 @@ export default function App() {
   const pauseStarted = useRef(Date.now());
   const level = levels.find(l => l.id === game?.levelId);
   const biome = getBiome(level?.biome);
+  const boardProfile = getBoardProfile(game?.levelId);
   const worldLevels = levels.filter(item => item.biome === biome.id);
   const chapter = Math.max(0, levels.findIndex(l => l.id === game?.levelId));
   const closeModal = useCallback(() => setModal(null), []);
@@ -341,7 +343,7 @@ export default function App() {
     </aside>
 
     <section className={`world-area ${ready ? 'is-ready' : ''}`} aria-label="Jeu de taquin">
-      <div className="world-topline"><span><i/> {biome.title.toUpperCase()}</span><div className="camera-tools"><button className="camera-reset" onClick={() => { setView('iso'); scene.current?.setView('iso'); }} title="Recentrer la caméra" aria-label="Recentrer la caméra"><Icon name="reset" size={15}/></button><button className="view-toggle" onClick={() => setView(view === 'top' ? 'iso' : 'top')} aria-label={view === 'top' ? 'Vue en perspective' : 'Vue du dessus'}><Icon name="eye" size={16}/>{view === 'top' ? 'Vue en perspective' : 'Vue du dessus'}</button></div></div>
+      <div className="world-topline"><span><i/> {boardProfile.name.toUpperCase()}</span><div className="camera-tools"><button className="camera-reset" onClick={() => { setView('iso'); scene.current?.setView('iso'); }} title="Recentrer la caméra" aria-label="Recentrer la caméra"><Icon name="reset" size={15}/></button><button className="view-toggle" onClick={() => setView(view === 'top' ? 'iso' : 'top')} aria-label={view === 'top' ? 'Vue en perspective' : 'Vue du dessus'}><Icon name="eye" size={16}/>{view === 'top' ? 'Vue en perspective' : 'Vue du dessus'}</button></div></div>
       <div className="canvas-host" ref={sceneHost}/>
       <div className="world-caption"><span className="coordinate">360°</span><p>{hoverText}</p><span className="coordinate">4 × 4</span></div>
       {!ready && !error && <div className="loading-world"><Icon name="diamond" size={36}/><p>Les pierres s’éveillent…</p></div>}

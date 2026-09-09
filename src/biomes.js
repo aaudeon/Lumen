@@ -4,7 +4,7 @@ export const BIOME_PALETTES = {
     fog: 0x193b2d, fogDensity: 0.026, sky: 0x9fc6c0, ground: 0x12271b,
     sun: 0xffd593, sunPower: 4.1, rimLight: 0x78b6b1, ambient: 0.85,
     rock: 0x667165, base: 0xb5c2ae, rim: 0xe3d1a8, dark: 0x68746b,
-    tile: 0xb3c2b1, edge: 0x839281, active: 0xd0dfbb, hover: 0xf4ebc6, occupied: 0xd6e5b4,
+    tile: 0xe0e4ca, edge: 0xc5c9ad, active: 0xeff2d3, hover: 0xfff1d3, occupied: 0xf1efc1,
     path: 0xf1e0bb, connected: 0x95efca, trace: 0xcdbd8e, traceGlow: 0x8c7951,
     connectedGlow: 0x4fd9b7, highlight: 0x183d2e, gold: 0xf5d38b, goldGlow: 0xc89340,
     portal: 0x7dfbdd, motes: 0xe5dca4, shaft: 0xffd286,
@@ -13,7 +13,7 @@ export const BIOME_PALETTES = {
     fog: 0x123b51, fogDensity: 0.035, sky: 0x9adce5, ground: 0x103448,
     sun: 0xb7eeff, sunPower: 3.4, rimLight: 0x59eddf, ambient: 1.05,
     rock: 0x506f7d, base: 0xa5c8ce, rim: 0xd0e4de, dark: 0x587e8d,
-    tile: 0xb2d1d0, edge: 0x679098, active: 0xd7ebe1, hover: 0xf1fcf1, occupied: 0xf0e7b9,
+    tile: 0xe5f4f2, edge: 0xc1dce1, active: 0xf0fffc, hover: 0xffffff, occupied: 0xfff2c9,
     path: 0xd0e6e2, connected: 0x79f7ef, trace: 0x91bcc7, traceGlow: 0x287998,
     connectedGlow: 0x26dce5, highlight: 0x18465b, gold: 0xd6eeca, goldGlow: 0x4aacac,
     portal: 0x5efaff, motes: 0xa1e9ff, shaft: 0x88dbf6,
@@ -22,14 +22,14 @@ export const BIOME_PALETTES = {
     fog: 0x312027, fogDensity: 0.025, sky: 0xc4a4aa, ground: 0x32151b,
     sun: 0xffbd8d, sunPower: 3.6, rimLight: 0xee6656, ambient: 1.05,
     rock: 0x41404b, base: 0x8d7c77, rim: 0xc7a58b, dark: 0x554951,
-    tile: 0x9f9190, edge: 0x665965, active: 0xc4b29c, hover: 0xefdbc1, occupied: 0xe3cfad,
+    tile: 0xd4cbd2, edge: 0xb8a4b4, active: 0xf0ddd2, hover: 0xffe7d5, occupied: 0xffddb1,
     path: 0xedc596, connected: 0xffca83, trace: 0xd59b78, traceGlow: 0x9c4931,
     connectedGlow: 0xf78035, highlight: 0x4e251c, gold: 0xffc47c, goldGlow: 0xec7836,
     portal: 0xff9a48, motes: 0xff9955, shaft: 0xff9274,
   },
 };
 
-export function createBiomeEnvironment({ THREE, world, maps = {} }) {
+export function createBiomeEnvironment({ THREE, world, maps = {}, boardTextures }) {
   const root = new THREE.Group();
   root.name = 'expedition-biomes';
   world.add(root);
@@ -49,7 +49,7 @@ export function createBiomeEnvironment({ THREE, world, maps = {} }) {
     const geometry = value => { geometries.add(value); return value; };
     const material = value => { materials.add(value); return value; };
     const stone = material(new THREE.MeshStandardMaterial({ color: kind === 'atlantis' ? 0x92b8bd : 0x42414b,
-      map: maps.stone || null, roughness: 0.95, flatShading: true }));
+      map: boardTextures?.get(kind).edge || maps.stone || null, roughness: 0.95, flatShading: true }));
     const trim = material(new THREE.MeshStandardMaterial({ color: kind === 'atlantis' ? 0xccd6ba : 0x80625d,
       roughness: 0.85, metalness: 0.1 }));
     const cylinder = geometry(new THREE.CylinderGeometry(1, 1, 1, 7));
