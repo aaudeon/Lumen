@@ -1,12 +1,13 @@
 """Sliding-path rules and a bounded, state-aware hint search.
 
 The hero is never carried by a sliding tile. Safe directed routes respect
-predators, one-way currents and fragile stones that collapse after departure.
+patrolling predators, tide-driven currents, sealed gates and fragile stones
+that collapse after departure, cracking their neighbours as they fall.
 """
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import heapq
 import itertools
 import time
@@ -16,6 +17,7 @@ SIZE = 4
 OUTSIDE, FINISH = -1, SIZE * SIZE
 DIRECTIONS = {"N": (-1, 0), "E": (0, 1), "S": (1, 0), "W": (0, -1)}
 OPPOSITE = {"N": "S", "S": "N", "E": "W", "W": "E"}
+HIGH, LOW = "haute", "basse"
 
 
 class GameError(ValueError):
@@ -24,10 +26,24 @@ class GameError(ValueError):
 
 @dataclass(frozen=True)
 class Tile:
+    """A stone. ``hazard`` names the single rule painted on it, if any."""
     id: str
     ports: tuple[str, ...]
     hazard: str | None = None
     flow: str | None = None
+
+
+MECHANICS = {
+    "fragile": ("Traversée éclair", "Rejoignez une pierre stable en une seule marche : les dalles fissurées s’effondrent derrière vous. Utilisez ces nouveaux vides pour déplacer les autres pierres."),
+    "current": ("Courants à sens unique", "Sur une dalle à courant, Lumen peut seulement repartir dans le sens de la flèche. Placez ces pierres pour former un trajet dans le bon sens."),
+    "crocodile": ("Gardiens de la jungle", "Les crocodiles bloquent le passage. Déplacez leurs dalles pour dégager votre route : ils restent sur leur pierre."),
+    "patrol": ("Gardiens en maraude", "Le crocodile change de pierre à chaque dalle que vous déplacez. Sa prochaine case est annoncée : comptez vos déplacements pour passer dans son dos."),
+    "gate": ("Sceaux et portes", "Une porte de pierre barre le passage tant que son sceau reste éteint. Posez la pierre de lest sur le sceau, ou faites toucher le levier à Lumen, pour ouvrir la voie ailleurs sur le plateau."),
+    "tide": ("La marée", "Le levier de marée inverse tous les courants et découvre les dalles immergées. Choisissez l’état du plateau qui ouvre la suite de votre route."),
+    "chain": ("Réactions en chaîne", "Quand une dalle fissurée s’effondre, elle lézarde ses voisines : elles deviennent fragiles à leur tour. Choisissez quels passages sacrifier pour libérer de l’espace."),
+    "relais": ("Un chemin à réutiliser", "Avancez avant de tout relier. Les pierres laissées derrière Lumen peuvent servir à construire la suite du passage."),
+    "default": ("Suivez la lumière", "Glissez les pierres vers le vide et reliez les chemins. Une pierre occupée par Lumen ne peut pas bouger."),
+}
 
 
 @dataclass(frozen=True)
@@ -42,24 +58,75 @@ class Level:
     biome: str = "jungle"
     biomeLevel: int = 1
     chapter: int = 1
+    # Board-level features: guardians walk cells, seals and levers open gates,
+    # the tide flips every current, and one relic rewards a detour.
+    patrols: tuple[tuple[int, ...], ...] = ()
+    levers: tuple[int, ...] = ()
+    seals: tuple[int, ...] = ()
+    tide: bool = False
+    relic: int | None = None
+    relicName: str = ""
+    rule: str = ""
+    stepPar: int = 0
+
+    def mechanic(self):
+        hazards = {tile.hazard for tile in self.tiles if tile and tile.hazard}
+        key = self.rule or next((name for name, present in (
+            ("patrol", bool(self.patrols)), ("gate", "gate" in hazards),
+            ("tide", self.tide), ("chain", "brittle" in hazards),
+            ("fragile", "fragile" in hazards), ("current", "current" in hazards),
+            ("crocodile", "crocodile" in hazards),
+            ("relais", self.id == "relais")) if present), "default")
+        title, text = MECHANICS[key]
+        return {"key": key, "title": title, "text": text}
 
     def public(self):
         result = {key: getattr(self, key) for key in
-                ("id", "name", "subtitle", "difficulty", "par",
-                 "biome", "biomeLevel", "chapter")}
-        hazards = {tile.hazard for tile in self.tiles if tile and tile.hazard}
-        if "fragile" in hazards:
-            mechanic = {"title": "Traversée éclair", "text": "Rejoignez une pierre stable en une seule marche : les dalles fissurées s’effondrent derrière vous. Utilisez ces nouveaux vides pour déplacer les autres pierres."}
-        elif "current" in hazards:
-            mechanic = {"title": "Courants à sens unique", "text": "Sur une dalle à courant, Lumen peut seulement repartir dans le sens de la flèche. Placez ces pierres pour former un trajet dans le bon sens."}
-        elif "crocodile" in hazards:
-            mechanic = {"title": "Gardiens de la jungle", "text": "Les crocodiles bloquent le passage. Déplacez leurs dalles pour dégager votre route : ils restent sur leur pierre."}
-        elif self.id == "relais":
-            mechanic = {"title": "Un chemin à réutiliser", "text": "Avancez avant de tout relier. Les pierres laissées derrière Lumen peuvent servir à construire la suite du passage."}
-        else:
-            mechanic = {"title": "Suivez la lumière", "text": "Glissez les pierres vers le vide et reliez les chemins. Une pierre occupée par Lumen ne peut pas bouger."}
-        result["mechanic"] = mechanic
+                ("id", "name", "subtitle", "difficulty", "par", "stepPar", "biome",
+                 "biomeLevel", "chapter", "relicName")}
+        result["mechanic"] = self.mechanic()
+        result["relic"] = self.relic
         return result
+
+
+@dataclass(frozen=True)
+class Board:
+    """The stones plus every live board value the movement rules read."""
+    tiles: tuple[Tile | None, ...]
+    level: Level = field(default=None, repr=False)
+    guards: tuple[int, ...] = ()
+    tide: str = HIGH
+    pulled: tuple[int, ...] = ()
+
+    @property
+    def guard_cells(self):
+        """Guardians patrol cells, so a stone sliding away never carries one."""
+        return tuple(route[step % len(route)]
+                     for route, step in zip(self.level.patrols, self.guards))
+
+    @property
+    def gates_open(self):
+        return (all(cell in self.pulled for cell in self.level.levers)
+                and all(self.pressed(cell) for cell in self.level.seals))
+
+    def pressed(self, cell):
+        tile = self.tiles[cell]
+        return tile is not None and tile.hazard == "weight"
+
+    def departure(self, tile):
+        """The one side a current allows, mirrored while the tide is low."""
+        return OPPOSITE[tile.flow] if self.tide == LOW and tile.flow else tile.flow
+
+    def blocked(self, index):
+        """Cells the explorer may not step onto."""
+        tile = self.tiles[index]
+        if tile is None or index in self.guard_cells:
+            return True
+        if tile.hazard == "crocodile":
+            return True
+        if tile.hazard == "gate" and not self.gates_open:
+            return True
+        return tile.hazard == "submerged" and self.tide == HIGH
 
 
 def neighbors(index):
@@ -190,25 +257,27 @@ LEVEL_BY_ID = {level.id: level for level in LEVELS}
 
 
 def connected_neighbors(board, position):
-    """Directed edges: predators block entry; currents constrain departure."""
+    """Directed edges: guardians and closed gates block entry, currents constrain departure."""
+    tiles = board.tiles
     if position == OUTSIDE:
-        if board[0] and board[0].hazard != "crocodile" and "W" in board[0].ports:
+        if not board.blocked(0) and "W" in tiles[0].ports:
             yield 0
         return
     if position == FINISH:
         return
-    tile = board[position]
-    if tile is None or tile.hazard == "crocodile":
+    tile = tiles[position]
+    if tile is None:
         return
-    allowed = (tile.flow,) if tile.hazard == "current" else tile.ports
+    # Departure is never blocked: a gate closing behind Lumen must not strand him.
+    allowed = (board.departure(tile),) if tile.hazard == "current" else tile.ports
     if position == 0 and "W" in tile.ports and "W" in allowed:
         yield OUTSIDE
     if position == 15 and "E" in tile.ports and "E" in allowed:
         yield FINISH
     for side, destination in neighbors(position):
-        other = board[destination]
+        other = tiles[destination]
         if (side in tile.ports and side in allowed and other
-                and other.hazard != "crocodile" and OPPOSITE[side] in other.ports):
+                and not board.blocked(destination) and OPPOSITE[side] in other.ports):
             yield destination
 
 
@@ -228,33 +297,58 @@ def paths_from(board, hero):
                 queue.append(destination)
     return {at: path for at, path in paths.items()
             if at in {OUTSIDE, FINISH} or at == hero
-            or board[at].hazard != "fragile"}
+            or board.tiles[at].hazard != "fragile"}
+
+
+def walk_impact(board, path):
+    """Stones lost and stones cracked by one crossing, before it is played."""
+    collapsed, weakened = [], []
+    for step, index in enumerate(path[:-1]):
+        tile = board.tiles[index] if 0 <= index < FINISH else None
+        if tile and tile.hazard == "fragile":
+            collapsed.append({"index": index, "tileId": tile.id, "pathStep": step})
+            for _, side in neighbors(index):
+                neighbour = board.tiles[side]
+                if neighbour and neighbour.hazard == "brittle" and side not in weakened:
+                    weakened.append(side)
+    return collapsed, sorted(index for index in weakened
+                             if index not in {event["index"] for event in collapsed})
 
 
 def walk_result(board, hero, destination, paths=None):
+    """Play one crossing: stones fall, their brittle neighbours crack, levers latch."""
     paths = paths if paths is not None else paths_from(board, hero)
     if destination not in paths or destination == hero:
         raise GameError("Le chemin vers cette case n’est pas encore relié dans le bon sens.")
     path = paths[destination]
-    result = list(board)
-    collapsed = []
-    for step, index in enumerate(path[:-1]):
-        if 0 <= index < FINISH and result[index] and result[index].hazard == "fragile":
-            collapsed.append({"index": index, "tileId": result[index].id, "pathStep": step})
-            result[index] = None
-    return tuple(result), path, collapsed
+    collapsed, weakened = walk_impact(board, path)
+    tiles = list(board.tiles)
+    for index in weakened:
+        tiles[index] = replace(tiles[index], hazard="fragile")
+    for event in collapsed:
+        tiles[event["index"]] = None
+    pulled = board.pulled
+    if destination in board.level.levers and destination not in pulled:
+        pulled = tuple(sorted(pulled + (destination,)))
+    report = {"collapsed": collapsed, "weakened": weakened,
+              "relic": board.level.relic is not None and board.level.relic in path}
+    return replace(board, tiles=tuple(tiles), pulled=pulled), path, report
 
 
 def slide_options(board, hero):
-    return sorted((source, target) for target, tile in enumerate(board) if tile is None
-                  for _, source in neighbors(target) if board[source] and source != hero)
+    """Stones pinned by Lumen or by a guardian's weight stay put."""
+    pinned = {hero, *board.guard_cells}
+    return sorted((source, target) for target, tile in enumerate(board.tiles) if tile is None
+                  for _, source in neighbors(target)
+                  if board.tiles[source] and source not in pinned)
 
 
 def board_key(board):
     # Shape-equivalent tiles are interchangeable only when their hazards and
     # current directions also match. Stable IDs are retained in actual boards.
-    return tuple(None if tile is None else
-                 ("".join(sorted(tile.ports)), tile.hazard, tile.flow) for tile in board)
+    return (tuple(None if tile is None else
+                  ("".join(sorted(tile.ports)), tile.hazard, tile.flow) for tile in board.tiles),
+            board.guards, board.tide, board.pulled)
 
 
 def search_key(board, hero):
@@ -262,14 +356,36 @@ def search_key(board, hero):
     return board_key(board), hero
 
 
-def swapped(board, source, target=None):
+def advanced_guards(board, hero):
+    """One patrol step per stone move; a guardian waits at a gap or a busy cell."""
+    steps = list(board.guards)
+    cells = list(board.guard_cells)
+    for i, route in enumerate(board.level.patrols):
+        target = route[(steps[i] + 1) % len(route)]
+        if board.tiles[target] is None or target == hero or target in cells[:i] + cells[i + 1:]:
+            continue
+        # Wrap the counter so two identical rounds share one search state.
+        steps[i] = (steps[i] + 1) % len(route)
+        cells[i] = target
+    return tuple(steps)
+
+
+def guard_preview(board, hero):
+    """Where each guardian stands now, and the cell it will reach on the next slide."""
+    after = advanced_guards(board, hero)
+    return [{"index": cell, "next": route[step % len(route)], "route": list(route)}
+            for cell, route, step in zip(board.guard_cells, board.level.patrols, after)]
+
+
+def swapped(board, source, target=None, hero=OUTSIDE):
     if target is None:
-        target = min((i for _, i in neighbors(source) if board[i] is None), default=None)
-    if target is None or (source, target) not in slide_options(board, OUTSIDE):
+        target = min((i for _, i in neighbors(source) if board.tiles[i] is None), default=None)
+    if target is None or (source, target) not in slide_options(board, hero):
         raise GameError("Seule une pierre voisine du vide choisi peut glisser.")
-    result = list(board)
-    result[target], result[source] = result[source], None
-    return tuple(result)
+    tiles = list(board.tiles)
+    tiles[target], tiles[source] = tiles[source], None
+    moved = replace(board, tiles=tuple(tiles))
+    return replace(moved, guards=advanced_guards(moved, hero))
 
 
 def valid_index(value, *, outside=False):
@@ -288,45 +404,79 @@ class Game:
 
     def _reset(self):
         self.tiles = self.level.tiles
+        self.guards = tuple(0 for _ in self.level.patrols)
+        self.tide = HIGH
+        self.pulled = ()
+        self.relic = False
         self.hero = OUTSIDE
         self.previous_hero = None
         self.moves = self.steps = 0
         self.hint = None
         self.walk_path = None
         self.collapsed = []
+        self.weakened = []
         self.message = self.level.subtitle
+
+    @property
+    def board(self):
+        return Board(self.tiles, self.level, self.guards, self.tide, self.pulled)
+
+    def _adopt(self, board):
+        self.tiles = board.tiles
+        self.guards = board.guards
+        self.tide = board.tide
+        self.pulled = board.pulled
 
     def _save(self, walk_path=None):
         route = tuple(walk_path) if walk_path else None
-        self.history.append((self.tiles, self.hero, self.previous_hero,
-                             self.moves, self.steps, route))
+        self.history.append((self.tiles, self.hero, self.previous_hero, self.moves,
+                             self.steps, route, self.guards, self.tide, self.pulled, self.relic))
 
     def state(self):
-        paths = paths_from(self.tiles, self.hero)
+        board = self.board
+        paths = paths_from(board, self.hero)
         won = self.hero == FINISH
-        options = [] if won else slide_options(self.tiles, self.hero)
+        options = [] if won else slide_options(board, self.hero)
+        level = self.level
+        impact = {}
+        if any(tile and tile.hazard in {"fragile", "brittle"} for tile in self.tiles):
+            for index, path in paths.items():
+                collapsed, weakened = walk_impact(board, path)
+                if collapsed or weakened:
+                    impact[str(index)] = {"collapse": [event["index"] for event in collapsed],
+                                          "weaken": weakened}
         return {
-            "id": self.id, "levelId": self.level.id, "biome": self.level.biome,
-            "size": SIZE, "mechanic": self.level.public()["mechanic"],
+            "id": self.id, "levelId": level.id, "biome": level.biome,
+            "size": SIZE, "mechanic": level.mechanic(),
             "tiles": [None if t is None else {"id": t.id, "ports": list(t.ports),
-                       "hazard": t.hazard, "flow": t.flow} for t in self.tiles],
+                       "hazard": t.hazard, "flow": t.flow,
+                       "heading": board.departure(t) if t.hazard == "current" else None}
+                      for t in self.tiles],
             "hero": self.hero, "entry": {"index": 0, "side": "W"},
             "exit": {"index": 15, "side": "E"}, "moves": self.moves,
             "steps": self.steps, "won": won,
             "reachable": sorted(i for i in paths if 0 <= i < FINISH),
             "walkRoutes": {str(i): path for i, path in paths.items() if i != self.hero},
+            "walkImpact": impact,
             "emptyCells": [i for i, tile in enumerate(self.tiles) if tile is None],
             "slideOptions": [{"index": source, "to": target} for source, target in options],
             "slidable": sorted({source for source, _ in options}),
             "canEnter": self.hero == OUTSIDE and any(i >= 0 for i in paths),
             "canExit": not won and FINISH in paths,
+            "guardians": guard_preview(board, self.hero),
+            "levers": [{"index": cell, "pulled": cell in self.pulled} for cell in level.levers],
+            "seals": [{"index": cell, "pressed": board.pressed(cell)} for cell in level.seals],
+            "gatesOpen": board.gates_open,
+            "tide": self.tide, "canTide": bool(level.tide) and not won,
+            "relic": None if level.relic is None else
+                     {"index": level.relic, "name": level.relicName, "taken": self.relic},
             "historyLength": len(self.history), "hint": self.hint,
-            "message": self.message, "collapsed": self.collapsed,
+            "message": self.message, "collapsed": self.collapsed, "weakened": self.weakened,
             **({"walkPath": self.walk_path} if self.walk_path else {}),
         }
 
     def act(self, action, index=None, to=None):
-        if not isinstance(action, str) or action not in {"slide", "walk", "undo", "reset", "hint"}:
+        if not isinstance(action, str) or action not in {"slide", "walk", "tide", "undo", "reset", "hint"}:
             raise GameError("Action inconnue.")
         if to is not None and (action != "slide" or not valid_index(to)):
             raise GameError("Choisissez un vide valide pour ce déplacement.")
@@ -334,13 +484,16 @@ class Game:
             self._slide(index, to)
         elif action == "walk":
             self._walk(index)
+        elif action == "tide":
+            self._tide()
         elif action == "undo":
             if not self.history:
                 raise GameError("Aucune action à annuler.")
-            (self.tiles, self.hero, self.previous_hero,
-             self.moves, self.steps, route) = self.history.pop()
+            (self.tiles, self.hero, self.previous_hero, self.moves, self.steps,
+             route, self.guards, self.tide, self.pulled, self.relic) = self.history.pop()
             self.walk_path = list(reversed(route)) if route else None
             self.collapsed = []
+            self.weakened = []
             self.hint = None
             self.message = "Un pas en arrière. Les pierres retrouvent leur place."
         elif action == "reset":
@@ -349,6 +502,7 @@ class Game:
         else:
             self.walk_path = None
             self.collapsed = []
+            self.weakened = []
             self.hint = find_hint(self)
             self.message = self.hint["text"] if self.hint else (
                 "Le passage est accompli." if self.hero == FINISH else
@@ -362,22 +516,44 @@ class Game:
             raise GameError("Le passage est déjà accompli.")
         if index == self.hero:
             raise GameError("Cette pierre porte Lumen. Faites-le avancer avant de la déplacer.")
-        options = [to for source, to in slide_options(self.tiles, self.hero) if source == index]
+        board = self.board
+        if index in board.guard_cells:
+            raise GameError("Un crocodile pèse sur cette pierre. Attendez qu’il change de case.")
+        options = [to for source, to in slide_options(board, self.hero) if source == index]
         if target is None and options:
             target = options[0]
         if target not in options:
             raise GameError("Seule une pierre voisine du vide choisi peut glisser.")
         self._save()
-        self.tiles = swapped(self.tiles, index, target)
+        self._adopt(swapped(board, index, target, self.hero))
         self.moves += 1
         self.hint = self.walk_path = None
         self.collapsed = []
-        self.message = "Un nouveau passage s’ouvre." if len(self.state()["emptyCells"]) > 1 else "Le chemin se transforme."
+        self.weakened = []
+        holes = sum(1 for tile in self.tiles if tile is None)
+        self.message = ("Le crocodile avance d’une pierre." if self.level.patrols else
+                        "Un nouveau passage s’ouvre." if holes > 1 else "Le chemin se transforme.")
+
+    def _tide(self):
+        if not self.level.tide:
+            raise GameError("Aucun levier de marée sur ce plateau.")
+        if self.hero == FINISH:
+            raise GameError("Le passage est déjà accompli.")
+        self._save()
+        self.tide = LOW if self.tide == HIGH else HIGH
+        self.moves += 1
+        self.hint = self.walk_path = None
+        self.collapsed = []
+        self.weakened = []
+        self.message = ("La marée descend : les courants s’inversent et les dalles immergées émergent."
+                        if self.tide == LOW else
+                        "La marée remonte et rend aux courants leur sens premier.")
 
     def _walk(self, index):
         if self.hero == FINISH:
             raise GameError("Lumen est arrivé à destination.")
-        paths = paths_from(self.tiles, self.hero)
+        board = self.board
+        paths = paths_from(board, self.hero)
         if index is None:
             # Advance to the closest stable landing place, automatically crossing
             # a run of fragile cells without allowing an unsafe intermediate stop.
@@ -392,22 +568,34 @@ class Game:
         if index == self.hero:
             raise GameError("Lumen se trouve déjà sur cette case.")
         if 0 <= index < FINISH and self.tiles[index]:
-            if self.tiles[index].hazard == "crocodile":
-                raise GameError("Un crocodile garde cette pierre. Déplacez sa dalle pour le contourner.")
-            if self.tiles[index].hazard == "fragile":
+            hazard = self.tiles[index].hazard
+            if index in board.guard_cells or hazard == "crocodile":
+                raise GameError("Un crocodile garde cette pierre. Attendez qu’il s’écarte, ou contournez sa dalle.")
+            if hazard == "gate" and not board.gates_open:
+                raise GameError("Cette porte est close. Activez son sceau pour l’ouvrir.")
+            if hazard == "submerged" and self.tide == HIGH:
+                raise GameError("Cette dalle dort sous l’eau. Faites descendre la marée pour la découvrir.")
+            if hazard == "fragile":
                 raise GameError("Cette dalle va s’effondrer : choisissez une pierre stable au-delà pour la traverser sans arrêt.")
-        next_board, path, collapsed = walk_result(self.tiles, self.hero, index, paths)
+        next_board, path, report = walk_result(board, self.hero, index, paths)
+        had_relic = self.relic
         self._save(path)
-        self.tiles = next_board
+        self._adopt(next_board)
         self.previous_hero = path[-2]
         self.hero = index
         self.steps += len(path) - 1
         self.walk_path = path
-        self.collapsed = collapsed
+        self.collapsed = report["collapsed"]
+        self.weakened = report["weakened"]
+        self.relic = had_relic or report["relic"]
         self.hint = None
-        self.message = ("Le passage est accompli !" if index == FINISH else
-                        "Les dalles s’effondrent derrière Lumen. Utilisez les nouveaux vides !" if collapsed else
-                        "Lumen suit la lumière.")
+        self.message = (
+            "Le passage est accompli !" if index == FINISH else
+            f"Vous emportez {self.level.relicName} !" if report["relic"] and not had_relic else
+            "Les dalles voisines se lézardent : elles tomberont à la prochaine course." if report["weakened"] else
+            "Les dalles s’effondrent derrière Lumen. Utilisez les nouveaux vides !" if report["collapsed"] else
+            "Le sceau s’illumine : une porte vient de s’ouvrir." if next_board.pulled != board.pulled else
+            "Lumen suit la lumière.")
 
 
 def apply_plan(board, hero, actions):
@@ -418,17 +606,38 @@ def apply_plan(board, hero, actions):
             target = extra[0] if extra else None
             if index == hero:
                 raise GameError("Pierre occupée.")
-            board = swapped(board, index, target)
+            board = swapped(board, index, target, hero)
         elif kind == "walk":
             board, _, _ = walk_result(board, hero, index)
             hero = index
+        elif kind == "tide":
+            if not board.level.tide:
+                raise GameError("Aucun levier de marée sur ce plateau.")
+            board = replace(board, tide=LOW if board.tide == HIGH else HIGH)
         else:
             raise GameError("Action inconnue.")
     return board, hero
 
 
+def start_board(level):
+    return Board(level.tiles, level, tuple(0 for _ in level.patrols))
+
+
+def demonstrated_steps(level):
+    """How many steps the authored solution walks: the reference a run is scored against."""
+    board, hero, steps = start_board(level), OUTSIDE, 0
+    for action in level.solution:
+        if action[0] == "walk":
+            board, path, _ = walk_result(board, hero, action[1])
+            hero = action[1]
+            steps += len(path) - 1
+        else:
+            board, hero = apply_plan(board, hero, (action,))
+    return steps
+
+
 def witness_cache(level):
-    board, hero = level.tiles, OUTSIDE
+    board, hero = start_board(level), OUTSIDE
     result = {}
     for offset, action in enumerate(level.solution):
         result.setdefault(board_key(board), []).append((hero, level.solution[offset:]))
@@ -463,12 +672,12 @@ def hazard_campaign(levels):
                     # bridges, but the explorer must route around their guardian.
                     changes[tile.id] = replace(tile, ports=tuple("NESW"), hazard="crocodile")
         if level.biome in {"atlantis", "volcano"}:
-            board, hero = level.tiles, OUTSIDE
+            board, hero = start_board(level), OUTSIDE
             route = []
             for action in level.solution:
                 if action[0] == "walk":
                     route = paths_from(board, hero)[action[1]]
-                    final_board = board
+                    final_board = board.tiles
                 board, hero = apply_plan(board, hero, (action,))
             cells = [i for i in route if 0 <= i < FINISH]
             # Start with two marked stones; later chapters combine several.
@@ -510,7 +719,166 @@ def hazard_campaign(levels):
     return tuple(result)
 
 
-LEVELS = hazard_campaign(LEVELS)
+def trial(level_id, name, subtitle, difficulty, biome, ports, marks=(), solution=(), **extra):
+    """A short authored puzzle: ``ports`` holds one string per cell, None for a gap."""
+    tiles = tuple(None if value is None else
+                  Tile(f"{level_id}-{index}", tuple(value), *dict(marks).get(index, (None, None)))
+                  for index, value in enumerate(ports))
+    par = sum(1 for action in solution if action[0] in {"slide", "tide"})
+    return Level(level_id, name, subtitle, difficulty, par, tiles, solution, biome, **extra)
+
+
+ROCK = ""
+TRIALS = (
+    trial("gardiens", "La ronde du gardien",
+          "Le crocodile change de pierre à chaque dalle déplacée. Passez dans son dos.",
+          "Découverte", "jungle",
+          ["WE", "WE", "WE", "WS",
+           ROCK, ROCK, ROCK, "NS",
+           ROCK, ROCK, "NS", None,
+           ROCK, ROCK, ROCK, "NE"],
+          solution=(("slide", 10), ("slide", 14), ("walk", FINISH)),
+          patrols=((1, 2, 6, 5),), rule="patrol"),
+    trial("sentinelle", "La sentinelle",
+          "Avancez d’abri en abri : le gardien tourne, et le couloir se libère derrière lui.",
+          "Aventure", "jungle",
+          ["WE", "WE", "WE", "WS",
+           ROCK, "ES", "EW", "NW",
+           ROCK, "NS", None, ROCK,
+           ROCK, "NE", "WE", "WE"],
+          solution=(("walk", 7), ("slide", 11, 10), ("walk", 6),
+                    ("slide", 10, 11), ("walk", FINISH)),
+          patrols=((6, 5, 1, 2),), rule="patrol"),
+    trial("sceaux", "Le sceau du temple",
+          "Une porte de pierre barre la route. Conduisez Lumen jusqu’au levier caché.",
+          "Découverte", "jungle",
+          ["WE", "WES", "WE", "WS",
+           ROCK, None, ROCK, "NS",
+           ROCK, "N", "NS", None,
+           ROCK, ROCK, ROCK, "NE"],
+          marks=((3, ("gate", None)),),
+          solution=(("slide", 9, 5), ("slide", 10, 11), ("walk", 5), ("walk", FINISH)),
+          levers=(5,), rule="gate"),
+    trial("contrepoids", "Le contrepoids",
+          "La porte ne cède qu’à un poids. Amenez la pierre de lest jusqu’au sceau.",
+          "Défi", "jungle",
+          ["WE", "WE", "WE", "WS",
+           ROCK, ROCK, ROCK, "NS",
+           None, ROCK, ROCK, "NS",
+           ROCK, ROCK, ROCK, "NE"],
+          marks=((7, ("gate", None)), (12, ("weight", None))),
+          solution=(("slide", 12), ("slide", 13), ("slide", 9), ("slide", 5),
+                    ("slide", 4), ("slide", 8), ("walk", FINISH)),
+          seals=(4,), rule="gate"),
+    trial("vigie", "La vigie",
+          "Le lest doit atteindre le sceau, et le gardien quitter le couloir au même instant.",
+          "Maîtrise", "jungle",
+          ["WE", "WE", "WE", "WS",
+           ROCK, ROCK, ROCK, "NS",
+           ROCK, ROCK, ROCK, "NS",
+           ROCK, None, "", "NE"],
+          marks=((7, ("gate", None)), (14, ("weight", None))),
+          solution=(("slide", 14), ("slide", 10), ("slide", 9), ("slide", 8),
+                    ("slide", 12), ("slide", 13), ("slide", 9), ("slide", 13),
+                    ("walk", FINISH)),
+          seals=(12,), patrols=((6, 5, 1, 2),), rule="gate"),
+    trial("reflux", "L’heure du reflux",
+          "Un courant contraire ferme la descente. Attendez que la mer se retire.",
+          "Découverte", "atlantis",
+          ["WE", "WE", "WE", "WS",
+           ROCK, ROCK, ROCK, "NS",
+           ROCK, ROCK, "NS", None,
+           ROCK, ROCK, ROCK, "NE"],
+          marks=((1, ("current", "E")), (7, ("current", "N")), (10, ("submerged", None))),
+          solution=(("slide", 10), ("walk", 7), ("tide", None), ("walk", FINISH)),
+          tide=True, rule="tide"),
+    trial("estran", "L’estran",
+          "Trois courants, deux marées : chaque palier attend son niveau d’eau.",
+          "Expert", "atlantis",
+          ["WE", "WS", ROCK, "WS",
+           ROCK, "NE", "WE", None,
+           ROCK, ROCK, ROCK, "NS",
+           ROCK, ROCK, ROCK, "NE"],
+          marks=((1, ("current", "S")), (6, ("current", "W")), (11, ("current", "S"))),
+          solution=(("slide", 3), ("walk", 6), ("tide", None), ("walk", 11),
+                    ("tide", None), ("walk", FINISH)),
+          tide=True, rule="tide"),
+    trial("fissures", "Les premières fissures",
+          "Une dalle qui tombe lézarde ses voisines. Repartez avant que le sol ne cède.",
+          "Découverte", "volcano",
+          ["WE", "WS", ROCK, ROCK,
+           ROCK, "NS", ROCK, ROCK,
+           "NS", "NE", ROCK, ROCK,
+           ROCK, None, "WE", "WE"],
+          marks=((0, ("brittle", None)), (1, ("fragile", None)), (5, ("brittle", None))),
+          solution=(("slide", 9), ("walk", 5), ("slide", 8), ("walk", FINISH)),
+          rule="chain"),
+    trial("sacrifice", "Le passage sacrifié",
+          "Le vide manque à l’appel. Choisissez le pont que vous acceptez de perdre.",
+          "Légende", "volcano",
+          ["WE", "WS", ROCK, None,
+           ROCK, "NS", ROCK, ROCK,
+           "NS", ROCK, ROCK, ROCK,
+           ROCK, "NE", "WE", "WE"],
+          marks=((0, ("brittle", None)), (1, ("fragile", None)), (5, ("brittle", None))),
+          solution=(("walk", 5), ("slide", 2, 3), ("slide", 6, 2), ("slide", 10, 6),
+                    ("slide", 9, 10), ("slide", 8, 9), ("walk", FINISH)),
+          rule="chain"),
+)
+
+# One optional treasure per passage. Each pair is (relic cell, route cell it
+# hangs from): the relic stone becomes a dead end, so reaching it always costs
+# a detour and never shortens the road to the exit.
+RELIC_SPURS = {
+    "aube": (7, 11), "jardins": (10, 11), "brumes": (11, 10), "relais": (4, 5),
+    "gardiens": (5, 1), "sentinelle": (11, 7), "sceaux": (6, 7),
+    "contrepoids": (10, 11), "vigie": (6, 2),
+    "lagon": (10, 6), "reflux": (6, 2), "estran": (4, 5),
+    "cendres": (13, 14), "braises": (3, 7), "fissures": (10, 14),
+    "sacrifice": (12, 13),
+}
+RELIC_NAMES = {
+    "aube": "l’Œil de jade", "jardins": "la Fleur de pierre",
+    "brumes": "l’Amulette de liane", "canopee": "la Couronne de fougères",
+    "relais": "le Galet des voyageurs", "gardiens": "la Dent du gardien",
+    "sentinelle": "le Sifflet d’écorce", "sceaux": "la Clé de mousse",
+    "contrepoids": "le Contrepoids doré", "vigie": "l’Œuf de héron",
+    "lagon": "la Perle du lagon", "marees": "la Conque des marées",
+    "corail": "le Corail-lyre", "abysses": "la Tablette des abysses",
+    "trident": "l’Éclat du trident", "reflux": "l’Étoile de reflux",
+    "estran": "le Miroir d’estran", "cendres": "la Larme de cendre",
+    "braises": "le Charbon-cœur", "obsidienne": "le Verre d’obsidienne",
+    "forge": "le Marteau des anciens", "caldera": "la Braise éternelle",
+    "fissures": "l’Écaille de lave", "sacrifice": "le Sceau de basalte",
+}
+
+
+def with_relics(level):
+    """Open a one-stone spur off the route and hide the level's treasure there."""
+    spur = RELIC_SPURS.get(level.id)
+    if spur is None:
+        return level
+    cell, anchor = spur
+    side = next(name for name, target in neighbors(anchor) if target == cell)
+    tiles = list(level.tiles)
+    tiles[anchor] = replace(tiles[anchor], ports=tuple(sorted({*tiles[anchor].ports, side})))
+    tiles[cell] = replace(tiles[cell], ports=(OPPOSITE[side],))
+    return replace(level, tiles=tuple(tiles), relic=cell, relicName=RELIC_NAMES[level.id])
+
+
+def ordered_campaign(base, trials):
+    """Each world keeps its five original passages, then its newer trials."""
+    result = []
+    for biome in ("jungle", "atlantis", "volcano"):
+        family = ([level for level in base if level.biome == biome]
+                  + [level for level in trials if level.biome == biome])
+        for position, level in enumerate(family, 1):
+            ready = with_relics(replace(level, biomeLevel=position))
+            result.append(replace(ready, stepPar=demonstrated_steps(ready)))
+    return tuple(replace(level, chapter=index) for index, level in enumerate(result, 1))
+
+
+LEVELS = ordered_campaign(hazard_campaign(LEVELS), TRIALS)
 LEVEL_BY_ID = {level.id: level for level in LEVELS}
 
 WITNESSES = {level.id: witness_cache(level) for level in LEVELS}
@@ -535,9 +903,11 @@ def known_plan(level, board, hero, paths):
 
 def path_deficit(board, paths):
     """Relaxed distance used for search order only, never legality."""
+    tiles = board.tiles
+    guards = set(board.guard_cells)
     frontier = [(0, at) for at in paths if 0 <= at < FINISH]
     if not frontier:
-        frontier = [(0 if board[0] and "W" in board[0].ports else 1, 0)]
+        frontier = [(0 if tiles[0] and "W" in tiles[0].ports else 1, 0)]
     heapq.heapify(frontier)
     seen = set()
     while frontier:
@@ -545,21 +915,23 @@ def path_deficit(board, paths):
         if at in seen:
             continue
         seen.add(at)
-        tile = board[at]
+        tile = tiles[at]
         if at == 15:
             return cost + (0 if tile and "E" in tile.ports else 1)
         for side, dest in neighbors(at):
-            other = board[dest]
+            other = tiles[dest]
             edge = int(not tile or side not in tile.ports) + int(not other or OPPOSITE[side] not in other.ports)
-            edge += int(bool(other and other.hazard == "crocodile"))
-            edge += int(bool(tile and tile.hazard == "current" and tile.flow != side))
+            edge += int(bool(other and other.hazard == "crocodile") or dest in guards)
+            edge += int(bool(tile and tile.hazard == "current" and board.departure(tile) != side))
+            edge += int(bool(other and other.hazard == "gate" and not board.gates_open))
+            edge += int(bool(other and other.hazard == "submerged" and board.tide == HIGH))
             if dest not in seen:
                 heapq.heappush(frontier, (cost + edge, dest))
     return 20
 
 
 def solve_plan(game, max_states=12000, time_limit=1.4):
-    """Bounded search over real slides and walks, including collapse side effects.
+    """Bounded search over real slides, walks and tide levers, with side effects.
 
     None honestly means the search budget was exhausted. Each plan returned
     has valid explicit destinations even when a tile borders several holes.
@@ -568,7 +940,7 @@ def solve_plan(game, max_states=12000, time_limit=1.4):
         return ()
     started = time.monotonic()
     sequence = itertools.count()
-    board, hero = game.tiles, game.hero
+    board, hero = game.board, game.hero
     frontier = [(0, next(sequence), 0, board, hero, ())]
     visited = {search_key(board, hero): 0}
     expanded = 0
@@ -584,16 +956,20 @@ def solve_plan(game, max_states=12000, time_limit=1.4):
         if known is not None:
             return actions + known
         transitions = []
-        for source, target in slide_options(board, hero):
+        options = slide_options(board, hero)
+        for source, target in options:
             # Keep the old two-item shape where there is a single possible hole.
-            count = sum(1 for s, _ in slide_options(board, hero) if s == source)
+            count = sum(1 for other, _ in options if other == source)
             action = ("slide", source, target) if count > 1 else ("slide", source)
-            transitions.append((swapped(board, source, target), hero, action, 1.0))
+            transitions.append((swapped(board, source, target, hero), hero, action, 1.0))
         for destination in paths:
             if destination == hero or destination == FINISH:
                 continue
             next_board, _, _ = walk_result(board, hero, destination, paths)
             transitions.append((next_board, destination, ("walk", destination), .35))
+        if board.level.tide:
+            flipped = replace(board, tide=LOW if board.tide == HIGH else HIGH)
+            transitions.append((flipped, hero, ("tide", None), 1.0))
         for next_board, next_hero, action, weight in transitions:
             key = search_key(next_board, next_hero)
             next_cost = cost + weight
@@ -613,8 +989,13 @@ def find_hint(game):
         return None
     kind, index, *extra = plan[0]
     result = {"type": kind, "index": index}
+    if kind == "tide":
+        result["index"] = None
+        result["text"] = ("Faites descendre la marée pour inverser les courants."
+                          if game.tide == HIGH else "Laissez la marée remonter.")
+        return result
     if kind == "slide":
-        target = extra[0] if extra else next(to for source, to in slide_options(game.tiles, game.hero) if source == index)
+        target = extra[0] if extra else next(to for source, to in slide_options(game.board, game.hero) if source == index)
         result["to"] = target
         label = f"Glissez la pierre ligne {index // SIZE + 1}, colonne {index % SIZE + 1}, vers le vide ligne {target // SIZE + 1}, colonne {target % SIZE + 1}."
     elif index == FINISH:
@@ -622,7 +1003,7 @@ def find_hint(game):
     elif index == OUTSIDE:
         label = "Ramenez Lumen à l’entrée pour libérer cette pierre."
     else:
-        route = paths_from(game.tiles, game.hero)[index]
+        route = paths_from(game.board, game.hero)[index]
         crossing = any(game.tiles[i] and game.tiles[i].hazard == "fragile" for i in route if 0 <= i < FINISH)
         label = ("Traversez les dalles fissurées sans arrêt jusqu’à la pierre stable " if crossing else "Amenez Lumen ")
         label += f"ligne {index // SIZE + 1}, colonne {index % SIZE + 1}, pour libérer la suite."

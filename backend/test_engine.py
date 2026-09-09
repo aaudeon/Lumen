@@ -3,6 +3,7 @@ import http.client
 import json
 from pathlib import Path
 import random
+import re
 import tempfile
 import threading
 import unittest
@@ -29,29 +30,67 @@ class RulesTests(unittest.TestCase):
                 self.assertEqual(game.moves, level.par)
                 self.assertEqual(game.state()["slidable"], [])
 
-    def test_campaign_has_five_distinct_puzzles_per_biome(self):
-        self.assertEqual(len(LEVELS), 15)
-        self.assertEqual(len({level.id for level in LEVELS}), 15)
+    def test_step_par_matches_the_authored_solution(self):
+        # The client scores a run against these two references, so both must be real.
+        for level in LEVELS:
+            with self.subTest(level=level.id):
+                game = Game(level.id)
+                for action in level.solution:
+                    game.act(*action)
+                self.assertEqual(game.steps, level.stepPar)
+                self.assertEqual(game.moves, level.par)
+                self.assertGreater(level.stepPar, 0)
+                self.assertEqual(level.public()["stepPar"], level.stepPar)
+
+    def test_every_difficulty_label_has_a_client_score_rate(self):
+        # An unlisted label would silently score a hard passage like an easy one.
+        source = (Path(__file__).resolve().parent.parent / "src" / "score.js").read_text(encoding="utf-8")
+        table = source.split("export const RATES = {")[1].split("};")[0]
+        rates = {name: float(value) for name, value
+                 in re.findall(r"'?([^\s',:]+)'?\s*:\s*([\d.]+)", table)}
+        for level in LEVELS:
+            with self.subTest(level=level.id):
+                self.assertIn(level.difficulty, rates)
+                self.assertGreaterEqual(rates[level.difficulty], 1)
+
+    def test_campaign_numbers_every_world_and_keeps_puzzles_distinct(self):
+        self.assertEqual(len({level.id for level in LEVELS}), len(LEVELS))
         shapes = {tuple(None if tile is None else (tuple(sorted(tile.ports)), tile.hazard, tile.flow)
                         for tile in level.tiles) for level in LEVELS}
-        self.assertEqual(len(shapes), 15)
-        self.assertEqual([level.chapter for level in LEVELS], list(range(1, 16)))
-        for offset, biome in enumerate(("jungle", "atlantis", "volcano")):
-            levels = LEVELS[offset * 5:(offset + 1) * 5]
-            self.assertEqual([level.biome for level in levels], [biome] * 5)
-            self.assertEqual([level.biomeLevel for level in levels], list(range(1, 6)))
-            self.assertTrue(all(a.par < b.par for a, b in zip(levels, levels[1:])))
+        self.assertEqual(len(shapes), len(LEVELS))
+        self.assertEqual([level.chapter for level in LEVELS], list(range(1, len(LEVELS) + 1)))
+        order = [level.biome for level in LEVELS]
+        self.assertEqual(order, sorted(order, key=["jungle", "atlantis", "volcano"].index))
+        for biome in ("jungle", "atlantis", "volcano"):
+            levels = [level for level in LEVELS if level.biome == biome]
+            self.assertGreaterEqual(len(levels), 5)
+            self.assertEqual([level.biomeLevel for level in levels],
+                             list(range(1, len(levels) + 1)))
+            # The five original passages still form a rising ladder of par.
+            self.assertTrue(all(a.par < b.par for a, b in zip(levels[:5], levels[1:5])))
             for level in levels:
                 self.assertEqual(Game(level.id).state()["biome"], biome)
                 self.assertEqual(level.public()["biomeLevel"], level.biomeLevel)
                 self.assertEqual(level.public()["chapter"], level.chapter)
 
+    def test_every_level_has_a_board_profile_in_the_client(self):
+        # Without an entry here a level silently borrows the jungle architecture,
+        # its stone textures and its scenery, whatever biome the server reports.
+        source = (Path(__file__).resolve().parent.parent / "src" / "boards.js").read_text(encoding="utf-8")
+        table = source.split("const profiles = {")[1].split("};")[0]
+        profiles = dict(re.findall(r"^\s*(\w+): \['(\w+)'", table, re.M))
+        for level in LEVELS:
+            with self.subTest(level=level.id):
+                self.assertIn(level.id, profiles)
+                self.assertEqual(profiles[level.id], level.biome)
+
     def test_fifth_level_cannot_have_static_complete_path(self):
         level = LEVELS[4]
         self.assertEqual(level.id, "relais")
-        self.assertEqual(sum(bool(t and t.ports) for t in level.tiles), 6)
+        # A relic spur adds a one-port dead end, which no corridor can reuse.
+        self.assertEqual(sum(bool(t and len(t.ports) > 1) for t in level.tiles), 6)
         # Entry 0 to exit 15 requires >= 3 + 3 edges = 7 cells.
-        self.assertLess(sum(bool(t and t.ports) for t in level.tiles), 7)
+        self.assertLess(sum(bool(t and len(t.ports) > 1) for t in level.tiles), 7)
 
     def test_hero_tile_is_locked_and_rejection_is_atomic(self):
         game = Game("relais")
@@ -232,7 +271,7 @@ class HazardTests(unittest.TestCase):
     def test_braises_requires_reusing_path_after_a_collapse(self):
         game = Game("braises")
         # A static path between opposite corners needs at least seven cells.
-        self.assertEqual(sum(bool(tile and tile.ports) for tile in game.tiles), 6)
+        self.assertEqual(sum(bool(tile and len(tile.ports) > 1) for tile in game.tiles), 6)
         state = game.act("walk", 5)
         self.assertEqual(state["emptyCells"], [1, 2])
         for action in game.level.solution[1:]:
@@ -309,6 +348,144 @@ class HazardTests(unittest.TestCase):
         self.assertEqual(state["emptyCells"], [1, 3])
 
 
+class TrialTests(unittest.TestCase):
+    """The rules added after the first campaign: patrols, seals, tide, chains, relics."""
+
+    def test_patrol_steps_once_per_slide_and_announces_its_next_cell(self):
+        game = Game("gardiens")
+        state = game.state()
+        self.assertEqual(state["guardians"], [{"index": 1, "next": 2, "route": [1, 2, 6, 5]}])
+        self.assertNotIn(1, state["reachable"])
+        with self.assertRaisesRegex(GameError, "crocodile"):
+            game.act("walk", 1)
+        self.assertEqual(game.act("slide", 10)["guardians"][0]["index"], 2)
+        state = game.act("slide", 14)
+        self.assertEqual(state["guardians"][0]["index"], 6)
+        self.assertTrue(state["canExit"])
+        self.assertTrue(game.act("walk", FINISH)["won"])
+        self.assertEqual(game.moves, game.level.par)
+
+    def test_guardian_waits_at_a_gap_and_pins_the_stone_it_stands_on(self):
+        game = Game("gardiens")
+        game.act("slide", 10)          # guardian steps onto cell 2
+        self.assertNotIn(2, game.state()["slidable"])
+        with self.assertRaisesRegex(GameError, "pèse sur cette pierre"):
+            game.act("slide", 2)
+        # Empty the cell the guardian wants next; it stays where it is.
+        game.act("slide", 6, 10)
+        self.assertEqual(game.state()["guardians"][0], {"index": 2, "next": 2, "route": [1, 2, 6, 5]})
+        self.assertEqual(game.act("slide", 5, 6)["guardians"][0]["index"], 6)
+
+    def test_undo_rewinds_the_patrol_with_the_stones(self):
+        game = Game("gardiens")
+        before = game.state()
+        game.act("slide", 10)
+        restored = game.act("undo")
+        for key in ("tiles", "guardians", "reachable", "slidable", "moves"):
+            self.assertEqual(restored[key], before[key])
+
+    def test_lever_latches_the_gate_open_only_once_lumen_stands_on_it(self):
+        game = Game("sceaux")
+        game.act("slide", 9, 5)
+        game.act("slide", 10, 11)
+        state = game.state()
+        self.assertFalse(state["gatesOpen"])
+        self.assertEqual(state["levers"], [{"index": 5, "pulled": False}])
+        self.assertFalse(state["canExit"])
+        with self.assertRaisesRegex(GameError, "porte est close"):
+            game.act("walk", 3)
+        state = game.act("walk", 5)
+        self.assertTrue(state["gatesOpen"])
+        self.assertEqual(state["levers"], [{"index": 5, "pulled": True}])
+        self.assertTrue(state["canExit"])
+        self.assertFalse(game.act("undo")["gatesOpen"])
+
+    def test_weight_seal_holds_the_gate_open_only_while_the_stone_stays(self):
+        game = Game("contrepoids")
+        self.assertEqual(game.state()["seals"], [{"index": 4, "pressed": False}])
+        for action in game.level.solution[:-1]:
+            game.act(*action)
+        state = game.state()
+        self.assertEqual(state["seals"], [{"index": 4, "pressed": True}])
+        self.assertTrue(state["gatesOpen"])
+        self.assertTrue(state["canExit"])
+        # Lifting the ballast closes the gate again.
+        game.act("slide", 4, 8)
+        self.assertFalse(game.state()["gatesOpen"])
+        self.assertFalse(game.state()["canExit"])
+
+    def test_tide_reverses_currents_and_uncovers_submerged_stones(self):
+        game = Game("reflux")
+        game.act("slide", 10)
+        state = game.act("walk", 7)
+        self.assertEqual(state["tide"], "haute")
+        self.assertFalse(state["canExit"])
+        self.assertEqual(state["tiles"][7]["heading"], "N")
+        with self.assertRaisesRegex(GameError, "sous l’eau"):
+            game.act("walk", 11)
+        state = game.act("tide")
+        self.assertEqual(state["tide"], "basse")
+        self.assertEqual(state["tiles"][7]["heading"], "S")
+        self.assertTrue(state["canExit"])
+        self.assertEqual(game.moves, 2)
+        self.assertEqual(game.act("undo")["tide"], "haute")
+
+    def test_tide_is_refused_where_there_is_no_lever(self):
+        game = Game("aube")
+        self.assertFalse(game.state()["canTide"])
+        before = game.state()
+        with self.assertRaisesRegex(GameError, "levier de marée"):
+            game.act("tide")
+        self.assertEqual(game.state(), before)
+
+    def test_a_collapse_cracks_its_brittle_neighbours_and_the_preview_says_so(self):
+        game = Game("fissures")
+        state = game.act("slide", 9)
+        self.assertEqual(state["walkImpact"]["5"], {"collapse": [1], "weaken": [0, 5]})
+        state = game.act("walk", 5)
+        self.assertEqual(state["collapsed"], [{"index": 1, "tileId": "fissures-1", "pathStep": 2}])
+        self.assertEqual(state["weakened"], [0, 5])
+        self.assertEqual(state["tiles"][0]["hazard"], "fragile")
+        self.assertEqual(state["tiles"][5]["hazard"], "fragile")
+        # The stone under Lumen is now fragile: leaving it opens a second hole.
+        game.act("slide", 8)
+        state = game.act("walk", FINISH)
+        self.assertTrue(state["won"])
+        self.assertIn(5, state["emptyCells"])
+        restored = game.act("undo")
+        self.assertEqual(restored["tiles"][5]["hazard"], "fragile")
+        game.act("undo")
+        self.assertEqual(game.act("undo")["tiles"][5]["hazard"], "brittle")
+
+    def test_relics_are_dead_ends_that_no_solution_needs(self):
+        treasures = [level for level in LEVELS if level.relic is not None]
+        self.assertGreaterEqual(len(treasures), 12)
+        for level in treasures:
+            with self.subTest(level=level.id):
+                self.assertEqual(len(level.tiles[level.relic].ports), 1, "un cul-de-sac")
+                self.assertTrue(level.relicName)
+                game = Game(level.id)
+                self.assertEqual(game.state()["relic"],
+                                 {"index": level.relic, "name": level.relicName, "taken": False})
+                for action in level.solution:
+                    game.act(*action)
+                self.assertTrue(game.state()["won"])
+                self.assertFalse(game.state()["relic"]["taken"], "le trésor reste optionnel")
+
+    def test_a_relic_detour_is_collected_on_the_way_through(self):
+        game = Game("aube")
+        game.act("slide", 10)
+        game.act("slide", 14)
+        self.assertFalse(game.state()["relic"]["taken"])
+        state = game.act("walk", 7)
+        self.assertEqual(state["walkPath"], [-1, 0, 1, 2, 6, 10, 11, 7])
+        self.assertTrue(state["relic"]["taken"])
+        self.assertIn("l’Œil de jade", state["message"])
+        self.assertTrue(game.act("walk", FINISH)["won"])
+        self.assertTrue(game.state()["relic"]["taken"])
+        self.assertEqual(game.moves, 2)
+
+
 class ApiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -348,9 +525,9 @@ class ApiTests(unittest.TestCase):
         self.assertTrue(json.loads(data)["ok"])
         status, _, data = self.request("GET", "/api/levels")
         levels = json.loads(data)["levels"]
-        self.assertEqual(len(levels), 15)
+        self.assertEqual(len(levels), len(LEVELS))
         self.assertEqual([level["biome"] for level in levels],
-                         [biome for biome in ("jungle", "atlantis", "volcano") for _ in range(5)])
+                         [level.biome for level in LEVELS])
         status, headers, data = self.request("POST", "/api/game", {"levelId": "aube"})
         self.assertEqual(status, 200)
         self.assertIn("utf-8", headers["Content-Type"])

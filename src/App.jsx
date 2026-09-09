@@ -5,6 +5,8 @@ import HomeScreen from './HomeScreen.jsx';
 import { BIOMES, getBiome } from './campaign.js';
 import { directionalDestination } from './motion.js';
 import { getBoardProfile } from './boards.js';
+import { LABELS, scoreRun, walletTotal } from './score.js';
+import { EMPTY_WARDROBE, DEFAULT_LOOK, equip, purchase, spendable } from './cosmetics.js';
 
 function Icon({ name, size = 20, ...props }) {
   const paths = {
@@ -22,6 +24,9 @@ function Icon({ name, size = 20, ...props }) {
     check: <path d="m5 12 4 4L19 6"/>,
     eye: <><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></>,
     diamond: <><path d="m12 2 8 10-8 10-8-10Z"/><path d="M12 7v10m-4-5h8"/></>,
+    tide: <><path d="M2 9c2.5-2 4.5-2 7 0s4.5 2 7 0 4.5-2 6 0M2 15c2.5-2 4.5-2 7 0s4.5 2 7 0 4.5-2 6 0"/></>,
+    relic: <><path d="m12 3 2.4 5 5.6.7-4.1 3.9 1.1 5.6L12 15.6 6.9 18.2 8 12.6 3.9 8.7 9.6 8Z"/></>,
+    gate: <><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 4v16M15 4v16M4 12h16"/></>,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>{paths[name] || paths.diamond}</svg>;
 }
@@ -83,7 +88,14 @@ export default function App() {
   const [winDismissed, setWinDismissed] = useState(false);
   const [animating, setAnimating] = useState(false);
   const [slideChoice, setSlideChoice] = useState(-1);
+  const [arrival, setArrival] = useState(null);
+  const [runScore, setRunScore] = useState(null);
+  const [wardrobe, setWardrobe] = useState(() => {
+    const saved = readSaved('lumen-wardrobe', EMPTY_WARDROBE);
+    return { ...EMPTY_WARDROBE, ...saved, equipped: { ...DEFAULT_LOOK, ...saved?.equipped } };
+  });
   const sceneHost = useRef(null);
+  const frameProbe = useRef(null);
   const scene = useRef(null);
   const audio = useRef(null);
   const live = useRef({});
@@ -91,6 +103,11 @@ export default function App() {
   const requestInFlight = useRef(true);
   const alive = useRef(true);
   const pauseStarted = useRef(Date.now());
+  const arrivedWorlds = useRef(new Set());
+  const progressRef = useRef(progress);
+  progressRef.current = progress;
+  const levelsRef = useRef(levels);
+  levelsRef.current = levels;
   const level = levels.find(l => l.id === game?.levelId);
   const biome = getBiome(level?.biome);
   const boardProfile = getBoardProfile(game?.levelId);
@@ -104,9 +121,18 @@ export default function App() {
     save('lumen-session', next.id);
     save('lumen-level', next.levelId);
     if (next.won) {
+      const finished = levelsRef.current.find(item => item.id === next.levelId);
+      const seconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
+      const run = finished && scoreRun({ par: finished.par, stepPar: finished.stepPar, moves: next.moves,
+        steps: next.steps, seconds, relic: next.relic?.taken, difficulty: finished.difficulty });
+      const best = progressRef.current[next.levelId];
+      const record = Math.max(best?.score || 0, run?.total || 0);
+      if (run) setRunScore({ ...run, seconds, gained: record - (best?.score || 0), record });
       setProgress(previous => {
-        const best = previous[next.levelId];
-        const updated = { ...previous, [next.levelId]: { moves: Math.min(best?.moves ?? Infinity, next.moves), completed: true } };
+        const previousBest = previous[next.levelId];
+        const updated = { ...previous, [next.levelId]: { moves: Math.min(previousBest?.moves ?? Infinity, next.moves),
+          completed: true, relic: Boolean(previousBest?.relic || next.relic?.taken),
+          score: Math.max(previousBest?.score || 0, run?.total || 0) } };
         save('lumen-progress', updated);
         return updated;
       });
@@ -116,7 +142,8 @@ export default function App() {
     if (busyRef.current) return;
     setWorking(true);
     requestInFlight.current = true;
-    setError(''); setModal(null); setSelected(-2); setSlideChoice(-1); setWinDismissed(false);
+    setError(''); setModal(null); setSelected(-2); setSlideChoice(-1); setWinDismissed(false); setRunScore(null);
+    announceWorld(levelId);
     try {
       const next = await api('/api/game', { levelId });
       requestInFlight.current = false;
@@ -125,6 +152,13 @@ export default function App() {
       return true;
     } catch (err) { setNotice(err.message); return false; }
     finally { requestInFlight.current = false; setWorking(false); }
+  }
+  /** Each world introduces itself once per session, the first time it is entered. */
+  function announceWorld(levelId) {
+    const world = levels.find(item => item.id === levelId)?.biome;
+    if (!world || arrivedWorlds.current.has(world)) return;
+    arrivedWorlds.current.add(world);
+    setArrival(world);
   }
   function returnToMap() {
     if (busyRef.current) return;
@@ -138,6 +172,7 @@ export default function App() {
     } else if (pauseStarted.current !== null) {
       setStartedAt(previous => previous + Date.now() - pauseStarted.current);
     }
+    announceWorld(levelId);
     pauseStarted.current = null;
     setScreen('game');
   }
@@ -149,14 +184,14 @@ export default function App() {
     setSelected(-2);
     setSlideChoice(-1);
     try {
-      const next = await api('/api/action', { gameId: live.current.game.id, type, ...(index === undefined ? {} : { index }), ...(to === undefined ? {} : { to }) });
+      const next = await api('/api/action', { gameId: live.current.game.id, type, ...(index === undefined || index === null ? {} : { index }), ...(to === undefined ? {} : { to }) });
       if (!alive.current) return;
       requestInFlight.current = false;
       setAnimating(Boolean(next.walkPath?.length));
       persist(next);
       setNotice(next.hint?.text || next.message || (type === 'slide' ? 'La pierre glisse. Un nouveau chemin se dessine.' : 'À vous de tracer la suite.'));
       if (!next.walkPath?.length) audio.current?.play(type === 'hint' ? 'hint' : 'slide');
-      if (type === 'reset') { setStartedAt(Date.now()); setElapsed(0); setWinDismissed(false); }
+      if (type === 'reset') { setStartedAt(Date.now()); setElapsed(0); setWinDismissed(false); setRunScore(null); }
       if (!next.won) setWinDismissed(false);
       if (!scene.current) setWorking(false);
     } catch (err) {
@@ -197,7 +232,7 @@ export default function App() {
     const enabled = await audio.current?.setEnabled(!live.current.sound);
     setSound(Boolean(enabled));
   }
-  live.current = { game, mode, modal, sound, selected, slideChoice, act, handleTile, switchMode, toggleSound, screen };
+  live.current = { game, mode, modal, sound, selected, slideChoice, act, handleTile, switchMode, toggleSound, screen, arrival, wardrobe };
 
   useEffect(() => {
     alive.current = true;
@@ -229,6 +264,7 @@ export default function App() {
     init();
     try {
       scene.current = createGameScene(sceneHost.current, {
+        style: live.current.wardrobe.equipped,
         onTile: index => live.current.handleTile(index),
         onHover: setHovered,
         onFootfall: () => audio.current?.play('walk'),
@@ -247,6 +283,30 @@ export default function App() {
   useEffect(() => { scene.current?.update(game, mode, selected); }, [game, mode, selected]);
   useEffect(() => { scene.current?.setActive(screen === 'game'); }, [screen]);
   useEffect(() => { scene.current?.setView(view); }, [view]);
+  useEffect(() => { scene.current?.setExplorerStyle(wardrobe.equipped); }, [wardrobe]);
+  useEffect(() => {
+    const probe = frameProbe.current;
+    if (!probe) return;
+    const sync = () => {
+      const parent = probe.offsetParent;
+      if (!parent || !scene.current) return;
+      scene.current.setSafeArea({
+        top: probe.offsetTop,
+        left: probe.offsetLeft,
+        right: parent.clientWidth - probe.offsetLeft - probe.offsetWidth,
+        bottom: parent.clientHeight - probe.offsetTop - probe.offsetHeight,
+      });
+    };
+    const observer = new ResizeObserver(sync);
+    observer.observe(probe);
+    sync();
+    return () => observer.disconnect();
+  }, [ready, screen]);
+  useEffect(() => {
+    if (!arrival) return;
+    const timer = setTimeout(() => setArrival(null), 5200);
+    return () => clearTimeout(timer);
+  }, [arrival]);
   useEffect(() => {
     if (game?.won || screen !== 'game') return;
     const timer = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
@@ -255,16 +315,17 @@ export default function App() {
   useEffect(() => {
     function keydown(event) {
       const current = live.current;
-      if (current.screen !== 'game' || current.modal || event.ctrlKey || event.metaKey || event.altKey || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
+      if (current.screen !== 'game' || current.modal || current.arrival || event.ctrlKey || event.metaKey || event.altKey || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
       if (event.target.closest('button') && ['Enter', ' '].includes(event.key)) return;
       const key = event.key.toLowerCase();
-      if ([' ', 'enter', 'z', 'r', 'h', 'm', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) event.preventDefault();
+      if ([' ', 'enter', 'z', 'r', 'h', 'm', 't', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) event.preventDefault();
       if (event.repeat || busyRef.current) return;
       if (key === ' ') current.switchMode(current.mode === 'slide' ? 'walk' : 'slide');
       else if (key === 'z') current.act('undo');
       else if (key === 'r') current.act('reset');
       else if (key === 'h') current.act('hint');
       else if (key === 'm') current.toggleSound();
+      else if (key === 't') { if (current.game?.canTide) current.act('tide'); }
       else if (key === 'enter') {
         if (current.selected >= 0 && current.mode === 'slide') current.handleTile(current.selected);
         else current.act('walk');
@@ -298,13 +359,37 @@ export default function App() {
   const emptyCount = game?.emptyCells?.length || 1;
   const slideDestinations = game?.slideOptions?.filter(option => option.index === slideChoice) || [];
   const hoveredHazard = game?.tiles[hovered]?.hazard;
-  const hazardText = hoveredHazard === 'crocodile' ? 'Crocodile · passage interdit, dalle déplaçable' : hoveredHazard === 'current' ? `Courant · sortie vers ${{N:'le nord',E:'l’est',S:'le sud',W:'l’ouest'}[game.tiles[hovered].flow]}` : hoveredHazard === 'fragile' ? 'Dalle fragile · traversez jusqu’à une dalle stable' : '';
+  const compass = { N: 'le nord', E: 'l’est', S: 'le sud', W: 'l’ouest' };
+  const guardedCell = game?.guardians?.some(guard => guard.index === hovered);
+  const nextGuardCell = game?.guardians?.some(guard => guard.next === hovered && guard.index !== hovered);
+  const hazardText = guardedCell ? 'Crocodile en maraude · sa pierre est bloquée jusqu’à son départ'
+    : hoveredHazard === 'crocodile' ? 'Crocodile · passage interdit, dalle déplaçable'
+    : hoveredHazard === 'current' ? `Courant · sortie vers ${compass[game.tiles[hovered].heading || game.tiles[hovered].flow]}`
+    : hoveredHazard === 'fragile' ? 'Dalle fragile · traversez jusqu’à une dalle stable'
+    : hoveredHazard === 'brittle' ? 'Dalle fissurée · encore solide, elle cédera après un effondrement voisin'
+    : hoveredHazard === 'gate' ? (game.gatesOpen ? 'Porte ouverte · tant que le sceau reste actif' : 'Porte close · activez son sceau pour passer')
+    : hoveredHazard === 'weight' ? 'Pierre de lest · seule elle peut peser sur un sceau'
+    : hoveredHazard === 'submerged' ? (game.tide === 'basse' ? 'Dalle émergée · praticable tant que la marée est basse' : 'Dalle immergée · faites descendre la marée')
+    : game?.relic && game.relic.index === hovered && !game.relic.taken ? `Trésor · ${game.relic.name}, un détour facultatif`
+    : nextGuardCell ? 'Le crocodile viendra ici au prochain déplacement de dalle' : '';
+  const wallet = walletTotal(progress);
+  const credits = spendable(progress, wardrobe);
+  function buyCosmetic(itemId) {
+    const result = purchase(wardrobe, itemId, spendable(progressRef.current, wardrobe));
+    if (result.ok) { setWardrobe(result.wardrobe); save('lumen-wardrobe', result.wardrobe); }
+    return result;
+  }
+  function equipCosmetic(itemId) {
+    const next = equip(wardrobe, itemId);
+    setWardrobe(next);
+    save('lumen-wardrobe', next);
+  }
   const nextLevel = levels[chapter + 1];
   const nextJourney = nextLevel ? (nextLevel.biome === biome.id ? 'Poursuivre le voyage' : getBiome(nextLevel.biome).arrival) : 'Retrouver la carte';
   const hoverText = hazardText || (hovered === game?.hero ? 'Dalle occupée · déplacement verrouillé' : hovered === 16 ? 'Le portail de lumière · sortie' : hovered >= 0 ? `Ligne ${Math.floor(hovered / 4) + 1} · colonne ${hovered % 4 + 1}${!game?.tiles[hovered] ? ' · vide disponible' : game?.slidable.includes(hovered) ? ' · peut glisser' : game?.reachable.includes(hovered) ? ' · chemin accessible' : ''}` : 'Glissez pour tourner · molette ou pincement pour zoomer');
 
   return <>
-    {screen === 'home' && <HomeScreen levels={levels} progress={progress} currentGame={game} busy={busy} error={error} onStart={startExpedition} onSound={toggleSound} sound={sound}/>}
+    {screen === 'home' && <HomeScreen levels={levels} progress={progress} currentGame={game} busy={busy} error={error} onStart={startExpedition} onSound={toggleSound} sound={sound} wardrobe={wardrobe} credits={credits} onBuy={buyCosmetic} onEquip={equipCosmetic}/>}
     <main className="game-shell" data-biome={biome.id} hidden={screen !== 'game'}>
     <div className="grain" aria-hidden="true" />
     <header className="topbar">
@@ -320,6 +405,7 @@ export default function App() {
         <span className="chapter-count">{String(chapter + 1).padStart(2, '0')} <em>/ {String(levels.length || 15).padStart(2, '0')}</em></span>
       </nav>
       <div className="top-actions">
+        <span className="wallet-badge" title={`Portefeuille : ${wallet.toLocaleString('fr-FR')} pts · crédits disponibles : ${credits.toLocaleString('fr-FR')}`}><Icon name="relic" size={14}/><strong>{wallet.toLocaleString('fr-FR')}</strong><small>PTS</small></span>
         <button className="map-return" disabled={busy} onClick={returnToMap} title="Revenir à la carte" aria-label="Revenir à la carte">← <span>Carte</span></button>
         <button className={`icon-button ${sound ? 'on' : ''}`} title={sound ? 'Couper l’ambiance (M)' : 'Activer l’ambiance (M)'} aria-label={sound ? 'Couper le son' : 'Activer le son'} aria-pressed={sound} onClick={toggleSound}><Icon name={sound ? 'volume' : 'mute'}/></button>
         <button className="icon-button" title="Comment jouer" aria-label="Comment jouer" onClick={() => setModal('help')}><Icon name="help"/></button>
@@ -327,7 +413,7 @@ export default function App() {
     </header>
 
     <aside className="story-panel">
-      <p className="eyebrow"><span/> {biome.name.toUpperCase()} · {level?.biomeLevel || 1} / 5</p>
+      <p className="eyebrow"><span/> {biome.name.toUpperCase()} · {level?.biomeLevel || 1} / {worldLevels.length || 5}</p>
       <h1>{level?.name || 'Le premier\npassage'}</h1>
       <div className="title-ornament"><i/><Icon name="diamond" size={13}/><i/></div>
       <p className="story">{mechanic?.text || level?.subtitle || biome.description}</p>
@@ -343,14 +429,19 @@ export default function App() {
     </aside>
 
     <section className={`world-area ${ready ? 'is-ready' : ''}`} aria-label="Jeu de taquin">
-      <div className="world-topline"><span><i/> {boardProfile.name.toUpperCase()}</span><div className="camera-tools"><button className="camera-reset" onClick={() => { setView('iso'); scene.current?.setView('iso'); }} title="Recentrer la caméra" aria-label="Recentrer la caméra"><Icon name="reset" size={15}/></button><button className="view-toggle" onClick={() => setView(view === 'top' ? 'iso' : 'top')} aria-label={view === 'top' ? 'Vue en perspective' : 'Vue du dessus'}><Icon name="eye" size={16}/>{view === 'top' ? 'Vue en perspective' : 'Vue du dessus'}</button></div></div>
       <div className="canvas-host" ref={sceneHost}/>
-      <div className="world-caption"><span className="coordinate">360°</span><p>{hoverText}</p><span className="coordinate">4 × 4</span></div>
       {!ready && !error && <div className="loading-world"><Icon name="diamond" size={36}/><p>Les pierres s’éveillent…</p></div>}
       {error && <div className="world-error"><Icon name="help" size={26}/><p>{error}</p><button className="primary-button" onClick={() => location.reload()}>Réessayer</button></div>}
     </section>
 
-    <div className="board-legend"><span><i className="mint"/> Trajet sûr</span><span><i className="gold"/> Aventurier</span><span className={emptyCount > 1 ? 'extra-empty' : ''}><i className="empty"/> {emptyCount > 1 ? `${emptyCount} vides disponibles` : 'Case vide'}</span></div>
+    <div className="chrome-scrim" aria-hidden="true" />
+
+    <div className={`world-hud ${ready ? 'is-ready' : ''}`}>
+      <div className="frame-probe" ref={frameProbe} aria-hidden="true" />
+      <div className="world-topline"><span><i/> {boardProfile.name.toUpperCase()}</span><div className="camera-tools"><button className="camera-reset" onClick={() => { setView('iso'); scene.current?.setView('iso'); }} title="Recentrer la caméra" aria-label="Recentrer la caméra"><Icon name="reset" size={15}/></button><button className="view-toggle" onClick={() => setView(view === 'top' ? 'iso' : 'top')} aria-label={view === 'top' ? 'Vue en perspective' : 'Vue du dessus'}><Icon name="eye" size={16}/>{view === 'top' ? 'Vue en perspective' : 'Vue du dessus'}</button></div></div>
+      <div className="world-caption"><span className="coordinate">360°</span><p>{hoverText}</p><span className="coordinate">4 × 4</span></div>
+      <div className="board-legend"><span><i className="mint"/> Trajet sûr</span><span><i className="gold"/> Aventurier</span><span className={emptyCount > 1 ? 'extra-empty' : ''}><i className="empty"/> {emptyCount > 1 ? `${emptyCount} vides disponibles` : 'Case vide'}</span>{game?.canTide && <span className="tide-chip"><Icon name="tide" size={14}/> Marée {game.tide}</span>}{game?.relic && <span className={`relic-chip ${game.relic.taken ? 'found' : ''}`}><Icon name="relic" size={14}/> {game.relic.taken ? game.relic.name : 'Trésor à trouver'}</span>}</div>
+    </div>
 
     <section className="control-dock" aria-label="Commandes de jeu">
       <div className="mode-controls">
@@ -364,6 +455,7 @@ export default function App() {
         <button className="tool-button" disabled={busy || !game?.historyLength} onClick={() => act('undo')} title="Annuler (Z)"><Icon name="undo" size={19}/><span>Annuler</span></button>
         <button className="tool-button" disabled={busy || !game} onClick={() => act('reset')} title="Recommencer (R)"><Icon name="reset" size={19}/><span>Recommencer</span></button>
         <button className={`tool-button ${game?.hint ? 'hint-active' : ''}`} disabled={busy || !game || game.won} onClick={() => act('hint')} title="Un indice (H)"><Icon name="bulb" size={19}/><span>Un indice</span></button>
+        {game?.canTide && <button className={`tool-button tide-button ${game.tide === 'basse' ? 'is-low' : ''}`} disabled={busy} onClick={() => act('tide')} title="Levier de marée (T)"><Icon name="tide" size={19}/><span>{game.tide === 'basse' ? 'Faire monter' : 'Faire descendre'}</span></button>}
       </div>
       <button className="primary-button advance-button" disabled={busy || !canWalk} onClick={() => { setMode('walk'); act('walk', game?.canExit ? 16 : undefined); }}><Icon name="foot" size={20}/><span>{game?.canExit ? 'Vers la sortie' : game?.hero === -1 ? 'Entrer sur le chemin' : 'Avancer'}</span><Icon name="arrow" size={18}/></button>
     </section>
@@ -372,17 +464,39 @@ export default function App() {
 
     {game?.won && !animating && !winDismissed && !modal && <div className="victory-wrap"><section className="victory" role="dialog" aria-label="Chapitre terminé">
       <button className="icon-button victory-close" onClick={() => setWinDismissed(true)} aria-label="Admirer le plateau"><Icon name="close" size={17}/></button>
+      <div className="victory-rays" aria-hidden="true">{Array.from({ length: 12 }, (_, i) => <i key={i} style={{ '--a': `${i * 30}deg`, animationDelay: `${i * .05}s` }}/>)}</div>
       <div className="victory-symbol"><Icon name="diamond" size={32}/></div>
       <p className="eyebrow">LE PASSAGE EST OUVERT</p><h2>La lumière vous attend.</h2><p>{game.moves} déplacements · {game.steps} pas · {minutes}:{seconds}</p>
+      {game.relic && <p className={`victory-relic ${game.relic.taken ? 'found' : ''}`}><Icon name="relic" size={18}/>{game.relic.taken ? `${game.relic.name} rejoint votre carnet.` : `${game.relic.name} dort encore ici. Un détour vous attend.`}</p>}
+      {runScore && <div className="score-card">
+        <dl className="score-lines">{['passage', 'moves', 'steps', 'time', 'relic'].filter(part => runScore[part] > 0).map(part =>
+          <React.Fragment key={part}><dt>{LABELS[part]}</dt><dd>+{runScore[part]}</dd></React.Fragment>)}</dl>
+        {runScore.rate !== 1 && <p className="score-rate"><span>{level?.difficulty}</span><em>{runScore.earned.toLocaleString('fr-FR')} × {runScore.rate.toLocaleString('fr-FR')}</em></p>}
+        <p className="score-total"><span>SCORE DU PASSAGE</span><strong>{runScore.total.toLocaleString('fr-FR')}</strong></p>
+        <p className="score-wallet">{runScore.gained > 0
+          ? <>+{runScore.gained.toLocaleString('fr-FR')} au portefeuille · <b>{wallet.toLocaleString('fr-FR')} pts</b></>
+          : <>Votre record ici reste {runScore.record.toLocaleString('fr-FR')} · portefeuille <b>{wallet.toLocaleString('fr-FR')} pts</b></>}</p>
+      </div>}
       <button disabled={busy} className="primary-button" onClick={() => nextLevel ? loadLevel(nextLevel.id) : returnToMap()}>{nextJourney}<Icon name="arrow" size={18}/></button>
       <button className="victory-map" disabled={busy} onClick={returnToMap}>Voir ma progression sur la carte →</button>
     </section></div>}
+
+    {arrival && screen === 'game' && <div className="arrival-scene" data-biome={arrival} role="dialog" aria-label={getBiome(arrival).title} onClick={() => setArrival(null)}>
+      <div className="arrival-veil" aria-hidden="true"/>
+      <section className="arrival-card">
+        <span className="arrival-symbol" aria-hidden="true">{getBiome(arrival).symbol}</span>
+        <p className="eyebrow">MONDE {getBiome(arrival).world} · {getBiome(arrival).name.toUpperCase()}</p>
+        <h2>{getBiome(arrival).headline}<br/><em>{getBiome(arrival).emphasis}</em></h2>
+        <p className="arrival-story">{getBiome(arrival).description}</p>
+        <button className="primary-button" onClick={() => setArrival(null)}>{getBiome(arrival).arrival}<Icon name="arrow" size={18}/></button>
+      </section>
+    </div>}
 
     {modal === 'mechanic' && mechanic && <Dialog onClose={closeModal} title={mechanic.title}>
       <p className="eyebrow">LA RÈGLE DU LIEU · {biome.name.toUpperCase()}</p><h2>{mechanic.title}</h2>
       <p className="mechanic-explanation">{mechanic.text}</p>
       <p className="help-tip"><Icon name="bulb" size={19}/> En mode Explorer, survolez une dalle stable pour voir le trajet sûr. Un indice propose une action adaptée à l’état du plateau.</p>
-      <p className="keyboard-note">Les dangers suivent leur dalle quand elle glisse. Annuler restaure aussi les dalles effondrées : vous pouvez essayer une autre stratégie.</p>
+      <p className="keyboard-note">Les dangers suivent leur dalle quand elle glisse ; les crocodiles en maraude, eux, arpentent des cases fixes. Annuler restaure aussi les dalles effondrées, la marée et la ronde des gardiens : vous pouvez essayer une autre stratégie.</p>
       <button className="primary-button" onClick={closeModal}>À moi de jouer <Icon name="arrow" size={18}/></button>
     </Dialog>}
     {modal === 'help' && <Dialog onClose={closeModal} title="Comment jouer">
@@ -392,15 +506,15 @@ export default function App() {
         <article><span>02</span><div><h3>Explorez quand vous voulez</h3><p>En mode Explorer, survolez une dalle stable pour voir le trajet, puis cliquez pour le parcourir. « Avancer » rejoint le prochain point d’arrêt sûr.</p></div><Icon name="foot" size={26}/></article>
         <article><span>03</span><div><h3>Votre présence change le puzzle</h3><p>Une dalle occupée est verrouillée. Faites avancer l’aventurier, puis déplacez les pierres libérées. Rejoignez le portail pour terminer.</p></div><Icon name="lock" size={25}/></article>
       </div>
-      <div className="hazard-guide"><p><strong>Crocodiles</strong> · Leur dalle peut glisser, mais Lumen ne peut pas la traverser.</p><p><strong>Courants</strong> · La flèche impose la direction de sortie de cette dalle.</p><p><strong>Dalles fragiles</strong> · Rejoignez une dalle stable en une seule course. Les pierres fragiles tombent derrière vous et créent de nouveaux vides.</p></div>
+      <div className="hazard-guide"><p><strong>Crocodiles</strong> · Leur dalle peut glisser, mais Lumen ne peut pas la traverser. Certains patrouillent : ils changent de pierre à chaque dalle déplacée, et la case qu’ils visent est signalée.</p><p><strong>Courants</strong> · La flèche impose la direction de sortie de cette dalle.</p><p><strong>Marée</strong> · Le levier inverse tous les courants et découvre les dalles immergées. Il compte comme un déplacement.</p><p><strong>Sceaux et portes</strong> · Une porte s’ouvre quand son sceau est actif : sous la pierre de lest, ou après que Lumen a touché le levier.</p><p><strong>Dalles fragiles</strong> · Rejoignez une dalle stable en une seule course. Les pierres fragiles tombent derrière vous, créent de nouveaux vides et lézardent leurs voisines fissurées.</p><p><strong>Trésors</strong> · Chaque relique est un cul-de-sac : elle coûte un détour et ne raccourcit jamais la route.</p></div>
       <p className="help-tip"><Icon name="bulb" size={19}/> Revenez sur vos pas quand le chemin le permet, ou annulez votre action. Un indice montre la prochaine action possible vers une solution.</p>
-      <div className="shortcut-list"><span><kbd>ESPACE</kbd> Changer de mode</span><span><kbd>ENTRÉE</kbd> Avancer / déplacer la sélection</span><span><kbd>↑ ↓ ← →</kbd> Choisir une dalle / marcher</span><span><kbd>Z</kbd> Annuler <kbd>R</kbd> Recommencer <kbd>H</kbd> Indice</span></div>
+      <div className="shortcut-list"><span><kbd>ESPACE</kbd> Changer de mode</span><span><kbd>ENTRÉE</kbd> Avancer / déplacer la sélection</span><span><kbd>↑ ↓ ← →</kbd> Choisir une dalle / marcher</span><span><kbd>Z</kbd> Annuler <kbd>R</kbd> Recommencer <kbd>H</kbd> Indice <kbd>T</kbd> Marée</span></div>
       <p className="keyboard-note">Glissez sur le plateau pour tourner autour. La molette ou le pincement à deux doigts permet de zoomer. Un clic bref joue une dalle. Les flèches suivent les lignes du plateau : la vue du dessus facilite le jeu au clavier.</p>
       <button className="primary-button" onClick={closeModal}>L’aventure commence <Icon name="arrow" size={18}/></button>
     </Dialog>}
     {modal === 'levels' && <Dialog onClose={closeModal} title="Choisir un chapitre">
-      <p className="eyebrow">LES CHEMINS OUBLIÉS</p><h2>Trois mondes.<br/>Quinze passages.</h2><p className="dialog-intro">De la canopée aux profondeurs, puis jusqu’au cœur du volcan.</p>
-      <div className="level-list">{BIOMES.map(world => <React.Fragment key={world.id}><h3 className="level-world-heading">{world.symbol} {world.name} · monde {world.world}</h3>{levels.filter(item => item.biome === world.id).map(item => <button className={`level-choice ${game?.levelId === item.id ? 'current' : ''}`} key={item.id} disabled={busy} onClick={() => loadLevel(item.id)}><span className="level-numeral">{String(item.chapter).padStart(2, '0')}</span><span><strong>{item.name}</strong><small>{item.difficulty} · passage {item.biomeLevel} / 5</small></span><Icon name={progress[item.id]?.completed ? 'check' : 'arrow'} size={22}/></button>)}</React.Fragment>)}</div>
+      <p className="eyebrow">LES CHEMINS OUBLIÉS</p><h2>Trois mondes.<br/>{levels.length || 24} passages.</h2><p className="dialog-intro">De la canopée aux profondeurs, puis jusqu’au cœur du volcan. Chaque monde garde ses épreuves les plus récentes pour la fin.</p>
+      <div className="level-list">{BIOMES.map(world => <React.Fragment key={world.id}><h3 className="level-world-heading">{world.symbol} {world.name} · monde {world.world}</h3>{levels.filter(item => item.biome === world.id).map(item => <button className={`level-choice ${game?.levelId === item.id ? 'current' : ''}`} key={item.id} disabled={busy} onClick={() => loadLevel(item.id)}><span className="level-numeral">{String(item.chapter).padStart(2, '0')}</span><span><strong>{item.name}</strong><small>{item.difficulty} · passage {item.biomeLevel} / {levels.filter(other => other.biome === item.biome).length}{item.relicName ? ` · ${progress[item.id]?.relic ? '✦' : '✧'} ${item.relicName}` : ''}</small></span><Icon name={progress[item.id]?.completed ? 'check' : 'arrow'} size={22}/></button>)}</React.Fragment>)}</div>
       <p className="dialog-footnote">Les chapitres sont libres d’accès. Vos records restent dans ce navigateur.</p>
     </Dialog>}
   </main></>;

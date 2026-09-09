@@ -10,18 +10,29 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createRouteMotion, findWalkPreview } from './motion.js';
-import { createTileHazard, createCollapseEffects } from './hazards.js';
+import { createTileHazard, createCollapseEffects, createGuardian, createCellFeature } from './hazards.js';
 import { createBoardTextures } from './board-textures.js';
 import { getBoardProfile, createBoardStructure, createTileScenery } from './boards.js';
 
 const GAP = 1.34;
 const DIR = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] };
 const palette = { stone: 0x70827c, edge: 0x3e514f, path: 0xd5c9a6, active: 0x8be9cd, gold: 0xf5d38b };
+/** Vertical angle the playable board is framed with, inside the free area left by the interface. */
+const BASE_FOV = 34;
+/** Beyond this the wide-angle stretch on the screen corners becomes visible. */
+const MAX_FOV = 78;
+const FIT_MARGIN = 1.05;
+/** Ceiling on device pixels: full bleed on a high-density screen would otherwise quadruple fragment cost. */
+const PIXEL_BUDGET = 3.2e6;
+const BASE_TAN = Math.tan(THREE.MathUtils.degToRad(BASE_FOV / 2));
+const ISO_DIR = new THREE.Vector3(8.1, 10.1, 11.5).normalize();
+const TOP_DIR = new THREE.Vector3(0.01, 17.8, 0.9).normalize();
+const ORIGIN = new THREE.Vector3();
 
 export function createGameScene(host, callbacks) {
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(0x193b2d, 0.026);
-  const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100);
+  const camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.1, 100);
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.setClearColor(0x15272e, 0);
@@ -109,6 +120,7 @@ export function createGameScene(host, callbacks) {
   let active = true;
   let raf = 0;
   let lastTime = performance.now();
+  let shadowStamp = 0;
   let heroMotion = null;
   let heroHeading = 0;
   let currentLevel = null;
@@ -178,7 +190,7 @@ export function createGameScene(host, callbacks) {
   portalLight.position.set(0, 0.65, 0);
   portal.add(portalLight);
 
-  const explorer = createExplorer({ THREE });
+  const explorer = createExplorer({ THREE, style: callbacks.style });
   const hero = explorer.root;
   world.add(hero);
   const heroRing = mesh(new THREE.TorusGeometry(0.29, 0.012, 5, 32), goldMat, hero, 0, 0.012, 0);
@@ -315,6 +327,81 @@ export function createGameScene(host, callbacks) {
     blankMarkers.push({ group: marker, proxy, highlight, index });
   }
 
+  // Crocodiles that patrol cells, plus a discreet mark on the cell they head for.
+  const guardians = [];
+  const guardMat = new THREE.MeshBasicMaterial({ color: 0x9ee8c6, transparent: true, opacity: .6, toneMapped: false, side: THREE.DoubleSide });
+  materials.add(guardMat);
+  function addGuardian() {
+    const actor = createGuardian({ THREE, seed: guardians.length * 2.7 });
+    world.add(actor.root);
+    const marker = new THREE.Group();
+    marker.visible = false;
+    world.add(marker);
+    const ring = mesh(new THREE.TorusGeometry(.36, .018, 5, 26), guardMat, marker, 0, .05, 0);
+    ring.rotation.x = -Math.PI / 2;
+    ring.castShadow = ring.receiveShadow = false;
+    for (let i = 0; i < 2; i++) {
+      const chevron = mesh(new THREE.ConeGeometry(.1, .16, 3), guardMat, marker, 0, .06, -.1 + i * .19);
+      chevron.rotation.x = -Math.PI / 2;
+      chevron.castShadow = chevron.receiveShadow = false;
+    }
+    const entry = { actor, marker, target: new THREE.Vector3(), next: -1 };
+    guardians.push(entry);
+    return entry;
+  }
+  function syncGuardians() {
+    const list = state?.guardians || [];
+    while (guardians.length > list.length) {
+      const gone = guardians.pop();
+      gone.actor.dispose();
+      gone.marker.removeFromParent();
+    }
+    while (guardians.length < list.length) {
+      const fresh = addGuardian();
+      fresh.actor.root.position.copy(cellPosition(list[guardians.length - 1].index));
+    }
+    list.forEach((info, order) => {
+      const entry = guardians[order];
+      entry.target.copy(cellPosition(info.index));
+      entry.next = info.next;
+      entry.marker.visible = info.next !== info.index;
+      if (entry.marker.visible) {
+        entry.marker.position.copy(cellPosition(info.next));
+        entry.marker.position.y = .38;
+        const towards = cellPosition(info.next).sub(cellPosition(info.index));
+        entry.marker.rotation.y = Math.atan2(towards.x, towards.z);
+      }
+    });
+  }
+
+  // Pressure seals, levers and the level's optional treasure belong to a cell.
+  const features = [];
+  function syncFeatures() {
+    const wanted = [
+      ...(state?.seals || []).map(seal => ({ kind: 'seal', index: seal.index, value: seal.pressed })),
+      ...(state?.levers || []).map(lever => ({ kind: 'lever', index: lever.index, value: lever.pulled })),
+      ...(state?.relic ? [{ kind: 'relic', index: state.relic.index, value: state.relic.taken }] : []),
+    ];
+    const same = features.length === wanted.length
+      && features.every((item, order) => item.kind === wanted[order].kind && item.index === wanted[order].index);
+    if (!same) {
+      features.forEach(item => item.feature.dispose());
+      features.length = 0;
+      for (const item of wanted) {
+        const feature = createCellFeature({ THREE, kind: item.kind,
+          palette: { gold: biomePalette.gold, gem: biomePalette.connectedGlow } });
+        world.add(feature.root);
+        features.push({ ...item, feature });
+      }
+    }
+    features.forEach((item, order) => {
+      item.feature.set(wanted[order].value);
+      item.feature.root.position.copy(cellPosition(item.index));
+      // A fitting left over a hole settles to the bottom of the pit.
+      item.feature.root.position.y = state?.tiles[item.index] ? .36 : .04;
+    });
+  }
+
   function buildTile(tile, index) {
     const group = new THREE.Group();
     const variant = [...tile.id].reduce((sum, char) => sum + char.charCodeAt(0), boardProfile.variant) % 3;
@@ -438,6 +525,12 @@ export function createGameScene(host, callbacks) {
     if (next !== previous) pendingSettle = true;
     if (currentLevel !== next.id) {
       for (const [id, data] of tiles) removeTile(id, data);
+      // Guardians belong to their level: rebuild them instead of gliding across the board.
+      while (guardians.length) {
+        const gone = guardians.pop();
+        gone.actor.dispose();
+        gone.marker.removeFromParent();
+      }
       collapseEffects.clear();
       currentLevel = next.id;
       hero.position.copy(heroPosition(next.hero));
@@ -453,6 +546,7 @@ export function createGameScene(host, callbacks) {
         data.hazard = createTileHazard({ THREE, tile });
         data.group.add(data.hazard.root);
       }
+      data.hazard.apply({ gatesOpen: next.gatesOpen, tide: next.tide, heading: tile.heading });
       if (data.collapseDistance !== null || data.fallStartedAt !== null) {
         data.group.position.copy(cellPosition(index));
         data.group.rotation.set(0, 0, 0);
@@ -489,6 +583,8 @@ export function createGameScene(host, callbacks) {
         } else removeTile(id, data);
       }
     }
+    syncGuardians();
+    syncFeatures();
     if (next.won && !previous?.won) pendingVictory = true;
     if (!next.won) pendingVictory = false;
     updateColors();
@@ -523,7 +619,6 @@ export function createGameScene(host, callbacks) {
     dustMaterial.color.set(kind === 'atlantis' ? 0x92c2c7 : kind === 'volcano' ? 0x967b73 : 0xab9d69);
   }
   function setBoardProfile(profile) {
-    const oldFit = Math.max(boardProfile.sx, boardProfile.sz);
     boardProfile = profile;
     architecture.setProfile(profile);
     scenery.scale.set(profile.sx, 1, profile.sz);
@@ -542,10 +637,12 @@ export function createGameScene(host, callbacks) {
       marker.group.position.y=.018;
       marker.group.scale.set(profile.sx,1,profile.sz);
     }
-    camera.position.multiplyScalar(Math.max(profile.sx,profile.sz)/oldFit);
+    reframe();
   }
   function updateColors() {
     if (!state) return;
+    const previewed = state.hint?.type === 'walk' ? state.hint.index : mode === 'walk' ? (focus >= -1 ? focus : hovered) : -2;
+    const impact = state.walkImpact?.[String(previewed)];
     for (const data of tiles.values()) {
       const i = data.index;
       if (data.collapseDistance !== null || data.fallStartedAt !== null) {
@@ -572,10 +669,13 @@ export function createGameScene(host, callbacks) {
         arrow.rotation.y = Math.atan2(-dx,-dz);
       });
       const color = biomePalette;
-      data.tileEdge.color.set(color.edge);
+      // Show what a crossing would cost before it is played: stones lost, stones cracked.
+      const doomed = impact?.collapse.includes(i);
+      const cracking = impact?.weaken.includes(i);
+      data.tileEdge.color.set(doomed ? 0xd2683a : color.edge);
       data.tileMat.color.set(occupied ? color.occupied : hilite && active ? color.hover : active ? color.active : color.tile);
-      data.tileMat.emissive.set(isHint ? 0x625b2d : active && hilite ? color.highlight : 0x000000);
-      data.tileMat.emissiveIntensity = isHint ? 0.55 : 0.2;
+      data.tileMat.emissive.set(doomed ? 0x8c3410 : cracking ? 0x6d4a12 : isHint ? 0x625b2d : active && hilite ? color.highlight : 0x000000);
+      data.tileMat.emissiveIntensity = doomed ? 0.85 : cracking ? 0.5 : isHint ? 0.55 : 0.2;
       data.pathMat.color.set(reachable ? color.connected : color.path);
       data.traceMat.color.set(occupied ? color.gold : reachable ? color.connected : color.trace);
       data.traceMat.emissive.set(occupied ? color.gold : reachable ? color.connectedGlow : color.traceGlow);
@@ -630,46 +730,158 @@ export function createGameScene(host, callbacks) {
   renderer.domElement.addEventListener('webglcontextlost', onContextLost);
   function onContextLost(event) { event.preventDefault(); callbacks.onError?.('Le rendu 3D a été interrompu. Rechargez la page pour le rétablir.'); }
 
-  let cameraDistance = 1;
-  const cameraTarget = new THREE.Vector3(8.1, 10.1, 11.5);
+  /** Interface chrome overlaying the canvas, in CSS pixels; the board is framed in what it leaves free. */
+  const safeArea = { top: 0, right: 0, bottom: 0, left: 0 };
+  /** Canvas size, the free rectangle inside it, and the half-angle tangents that rectangle is granted. */
+  const framing = { width: 1, height: 1, x: 0, y: 0, w: 1, h: 1, vTan: BASE_TAN, hTan: BASE_TAN };
+  /** Per view: how far the camera stands, and where its axis must sit on the canvas to centre the board. */
+  const isoFrame = { distance: 17.3, x: 0, y: 0 };
+  const topFrame = { distance: 17.8, x: 0, y: 0 };
+  const axis = new THREE.Vector2();
+  const axisGoal = new THREE.Vector2();
+  const corners = Array.from({ length: 8 }, () => new THREE.Vector3());
+  const screenRight = new THREE.Vector3();
+  const screenUp = new THREE.Vector3();
+  const screenBox = { uMin: 0, uMax: 0, vMin: 0, vMax: 0 };
+
+  /** Board, its two platforms and the explorer, as a box around the point the camera looks at. */
+  function loadContent(direction) {
+    const hx = 3.5 * boardProfile.sx;
+    const hz = 2.7 * boardProfile.sz;
+    const basis = new THREE.Matrix4().lookAt(direction, ORIGIN, camera.up);
+    screenRight.setFromMatrixColumn(basis, 0);
+    screenUp.setFromMatrixColumn(basis, 1);
+    for (let i = 0; i < 8; i++) {
+      corners[i].set(i & 1 ? hx : -hx, (i & 2 ? 1.35 : -0.35) - controls.target.y, i & 4 ? hz : -hz);
+    }
+  }
+
+  /** Screen box of that content in tangent units; false when the camera would sit inside it. */
+  function projectContent(direction, distance) {
+    screenBox.uMin = screenBox.vMin = Infinity;
+    screenBox.uMax = screenBox.vMax = -Infinity;
+    for (const corner of corners) {
+      const depth = distance - corner.dot(direction);
+      if (depth < 0.25) return false;
+      const u = corner.dot(screenRight) / depth;
+      const v = corner.dot(screenUp) / depth;
+      screenBox.uMin = Math.min(screenBox.uMin, u); screenBox.uMax = Math.max(screenBox.uMax, u);
+      screenBox.vMin = Math.min(screenBox.vMin, v); screenBox.vMax = Math.max(screenBox.vMax, v);
+    }
+    return true;
+  }
+
+  /** Nearest distance whose screen box still spans the frame, and the axis that centres it there. */
+  function solveFrame(direction, out) {
+    loadContent(direction);
+    let lo = 0.25;
+    let hi = 400;
+    for (let i = 0; i < 36; i++) {
+      const mid = (lo + hi) / 2;
+      const fits = projectContent(direction, mid)
+        && screenBox.vMax - screenBox.vMin <= 2 * framing.vTan
+        && screenBox.uMax - screenBox.uMin <= 2 * framing.hTan;
+      if (fits) hi = mid; else lo = mid;
+    }
+    out.distance = hi * FIT_MARGIN;
+    projectContent(direction, out.distance);
+    // A board seen from an angle is not symmetric on screen: offset the axis instead of wasting the gap.
+    const perTan = framing.h / 2 / framing.vTan;
+    out.x = framing.x - (screenBox.uMin + screenBox.uMax) / 2 * perTan;
+    out.y = framing.y + (screenBox.vMin + screenBox.vMax) / 2 * perTan;
+  }
+
+  /** Off-centre the frustum onto `x, y`, keeping the free rectangle at its intended angular size. */
+  function applyAxis(x, y) {
+    const fullWidth = 2 * Math.max(x, framing.width - x);
+    const fullHeight = 2 * Math.max(y, framing.height - y);
+    camera.fov = Math.min(MAX_FOV, THREE.MathUtils.radToDeg(2 * Math.atan(BASE_TAN * fullHeight / framing.h)));
+    // Render the whole canvas, but aim it off centre: the scene bleeds behind the chrome while the
+    // board stays composed in the free area. setViewOffset derives the aspect ratio from the arguments.
+    camera.setViewOffset(fullWidth, fullHeight, fullWidth / 2 - x, fullHeight / 2 - y, framing.width, framing.height);
+    const tan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    return { v: tan * framing.h / fullHeight, h: tan * framing.w / fullHeight };
+  }
+
+  function reframe() {
+    const previous = topView ? topFrame.distance : isoFrame.distance;
+    framing.vTan = BASE_TAN;
+    framing.hTan = BASE_TAN * framing.w / framing.h;
+    let goal = isoFrame;
+    // Two passes, so a frame too cramped to be granted the full angle settles on what it did get.
+    for (let pass = 0; pass < 2; pass++) {
+      solveFrame(ISO_DIR, isoFrame);
+      solveFrame(TOP_DIR, topFrame);
+      goal = topView ? topFrame : isoFrame;
+      const granted = applyAxis(goal.x, goal.y);
+      framing.vTan = granted.v;
+      framing.hTan = granted.h;
+    }
+    axis.set(goal.x, goal.y);
+    // Preserve however far the player had zoomed in or out.
+    if (camera.position.length() > 1 && previous > 0) camera.position.multiplyScalar(goal.distance / previous);
+    controls.minDistance = goal.distance * 0.5;
+    controls.maxDistance = goal.distance * 2.1;
+  }
+
   function resize() {
     const width = host.clientWidth;
     const height = host.clientHeight;
     if (!width || !height) return;
+    const ratio = Math.min(window.devicePixelRatio || 1, 1.5, Math.sqrt(PIXEL_BUDGET / (width * height)));
+    renderer.setPixelRatio(Math.max(1, ratio));
     renderer.setSize(width, height);
     composer.setSize(width, height);
     glowPass.uniforms.resolution.value.set(width * renderer.getPixelRatio(), height * renderer.getPixelRatio());
-    camera.aspect = width / height;
-    const oldDistance = cameraDistance;
-    cameraDistance = Math.max(0.79, 1.06 / camera.aspect);
-    if (camera.position.length() > 1) camera.position.multiplyScalar(cameraDistance / oldDistance);
-    controls.minDistance = 7.8 * cameraDistance;
-    controls.maxDistance = 28 * cameraDistance;
-    camera.updateProjectionMatrix();
+    // Grant the chrome its space, but shrink it proportionally rather than starve the framing rectangle.
+    const insetX = safeArea.left + safeArea.right;
+    const insetY = safeArea.top + safeArea.bottom;
+    const keepX = insetX > 0 ? Math.min(1, width * 0.66 / insetX) : 0;
+    const keepY = insetY > 0 ? Math.min(1, height * 0.64 / insetY) : 0;
+    const left = safeArea.left * keepX;
+    const top = safeArea.top * keepY;
+    framing.width = width;
+    framing.height = height;
+    framing.w = width - left - safeArea.right * keepX;
+    framing.h = height - top - safeArea.bottom * keepY;
+    framing.x = left + framing.w / 2;
+    framing.y = top + framing.h / 2;
+    reframe();
   }
   const observer = new ResizeObserver(resize);
   observer.observe(host);
   resize();
-  camera.position.copy(cameraTarget).multiplyScalar(cameraDistance);
-  camera.lookAt(0, 0, 0);
+  camera.position.copy(ISO_DIR).multiplyScalar(isoFrame.distance);
+  camera.lookAt(controls.target);
   function animate(now) {
     if (disposed || !active) return;
     const time = now / 1000;
     const frameDelta = Math.max(0, (now - lastTime) / 1000);
     const dt = Math.min(frameDelta, 0.05);
     lastTime = now;
-    const ideal = (topView ? new THREE.Vector3(0.01, 17.8, 0.9) : cameraTarget.clone()).multiplyScalar(cameraDistance * Math.max(boardProfile.sx,boardProfile.sz));
+    const view = topView ? topFrame : isoFrame;
+    const ideal = (topView ? TOP_DIR : ISO_DIR).clone().multiplyScalar(view.distance);
     if (cameraTransition) {
-      camera.position.lerp(ideal, 1 - Math.exp(-frameDelta * 7));
-      if (camera.position.distanceTo(ideal) < 0.01) cameraTransition = false;
+      const blend = 1 - Math.exp(-frameDelta * 7);
+      camera.position.lerp(ideal, blend);
+      axisGoal.set(view.x, view.y);
+      axis.lerp(axisGoal, blend);
+      applyAxis(axis.x, axis.y);
+      if (camera.position.distanceTo(ideal) < 0.01) {
+        cameraTransition = false;
+        axis.copy(axisGoal);
+        applyAxis(axis.x, axis.y);
+      }
     }
-    controls.update();
+    const cameraMoved = controls.update();
+    let tilesMoving = false;
     for (const data of tiles.values()) {
       data.hazard.update(time, { urgent: data.collapseDistance !== null });
-      if (data.fallStartedAt !== null) continue;
+      if (data.fallStartedAt !== null) { tilesMoving = true; continue; }
       const lifted = data.target.clone();
       if (data.collapseDistance === null && data.index === hovered && state?.slidable.includes(data.index) && mode === 'slide') lifted.y += 0.06;
       data.group.position.lerp(lifted, 1 - Math.exp(-frameDelta * 17));
+      if (data.group.position.distanceToSquared(lifted) > 1e-6) tilesMoving = true;
     }
     const moving = Boolean(heroMotion);
     let distance = 0;
@@ -702,6 +914,19 @@ export function createGameScene(host, callbacks) {
     }
     if (blanksChanged) updateBlankMarkers();
     collapseEffects.update(dt);
+    for (const guard of guardians) {
+      const step = guard.actor.root.position.distanceTo(guard.target);
+      guard.actor.root.position.lerp(guard.target, 1 - Math.exp(-frameDelta * 9));
+      if (step > .02) {
+        const towards = guard.target.clone().sub(guard.actor.root.position);
+        guard.actor.face(Math.atan2(towards.x, towards.z));
+      }
+      guard.actor.update(time, dt, step > .02);
+      if (step > .01) tilesMoving = true;
+      guard.marker.scale.setScalar(1 + Math.sin(time * 3.2) * .07);
+    }
+    if (guardians.length) guardMat.opacity = .34 + Math.sin(time * 3.2) * .16;
+    for (const item of features) item.feature.update(time);
     const turn = Math.atan2(Math.sin(heroHeading - hero.rotation.y), Math.cos(heroHeading - hero.rotation.y));
     hero.rotation.y += turn * (1 - Math.exp(-frameDelta * 16));
     const gait = explorer.update(time, dt, { moving, distance });
@@ -763,8 +988,12 @@ export function createGameScene(host, callbacks) {
       }
       sparksGeo.attributes.position.needsUpdate = true;
     } else sparksMat.opacity = 0;
-    // Keep one shadow update per frame, including the animated foliage and explorer.
-    renderer.shadowMap.needsUpdate = true;
+    // A 2048 soft shadow map is the heaviest pass of the frame. Refresh it whenever something
+    // actually moves, and otherwise idle at ~8 Hz so the ambient foliage sway still casts.
+    if (cameraMoved || cameraTransition || moving || tilesMoving || elapsed < 4 || now - shadowStamp > 120) {
+      renderer.shadowMap.needsUpdate = true;
+      shadowStamp = now;
+    }
     composer.render(dt);
     raf = requestAnimationFrame(animate);
   }
@@ -772,6 +1001,15 @@ export function createGameScene(host, callbacks) {
   callbacks.onReady?.();
   return {
     update,
+    setSafeArea(insets) {
+      if (disposed) return;
+      let changed = false;
+      for (const key of ['top', 'right', 'bottom', 'left']) {
+        const value = Math.max(0, insets?.[key] || 0);
+        if (Math.abs(safeArea[key] - value) > 0.5) { safeArea[key] = value; changed = true; }
+      }
+      if (changed) resize();
+    },
     setActive(value) {
       if (disposed || active === value) return;
       active = value;
@@ -781,6 +1019,7 @@ export function createGameScene(host, callbacks) {
         raf = requestAnimationFrame(animate);
       } else cancelAnimationFrame(raf);
     },
+    setExplorerStyle(style) { explorer.setStyle(style); },
     setView(value) {
       if (value === 'free') return;
       topView = value === 'top';
@@ -814,6 +1053,8 @@ export function createGameScene(host, callbacks) {
       renderer.domElement.removeEventListener('pointerleave', onLeave);
       renderer.domElement.removeEventListener('click', onClick);
       renderer.domElement.removeEventListener('webglcontextlost', onContextLost);
+      guardians.forEach(guard => { guard.actor.dispose(); guard.marker.removeFromParent(); });
+      features.forEach(item => item.feature.dispose());
       for (const [id, data] of tiles) removeTile(id, data);
       geometries.forEach(g => g.dispose());
       materials.forEach(m => m.dispose());

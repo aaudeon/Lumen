@@ -1,5 +1,12 @@
-/** Pixel-painted expedition character with a self-contained articulated voxel rig. */
-export function createExplorer({ THREE }) {
+import { paintCoat, paintSleeve, resolveLook } from './cosmetics.js';
+import { buildGear } from './gear.js';
+
+/** Pixel-painted expedition character with a self-contained articulated voxel rig.
+ *
+ * `style` names the equipped cosmetics; the textures are repainted in place when
+ * it changes, so the wardrobe never rebuilds the rig mid-expedition.
+ */
+export function createExplorer({ THREE, style }) {
   const root = new THREE.Group();
   root.name = 'voxel-explorer';
   const rig = new THREE.Group();
@@ -17,14 +24,19 @@ export function createExplorer({ THREE }) {
   const fullTurn = Math.PI * 2;
   const bootSole = 0.0715;
 
+  let look = resolveLook(style);
+  const repaints = [];
+
   const ownMaterial = material => { materials.add(material); return material; };
   function pixels(paint) {
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = 32;
     const ctx = canvas.getContext('2d');
     const rect = (color, x, y, width, height) => { ctx.fillStyle = color; ctx.fillRect(x, y, width, height); };
-    paint(rect);
+    const draw = () => paint(rect);
+    draw();
     const texture = new THREE.CanvasTexture(canvas);
+    repaints.push(() => { draw(); texture.needsUpdate = true; });
     texture.magFilter = texture.minFilter = THREE.NearestFilter;
     texture.generateMipmaps = false;
     texture.colorSpace = THREE.SRGBColorSpace;
@@ -51,7 +63,7 @@ export function createExplorer({ THREE }) {
   const hair = solid(0x483025);
   const leatherDark = solid(0x422b24);
   const brass = solid(0xbfa268, { metalness: 0.3, roughness: 0.5 });
-  const shirt = solid(0xd7c399);
+  const shirt = solid(look.coat.shirt);
 
   function faceTexture(blink) {
     return pixels(rect => {
@@ -79,34 +91,13 @@ export function createExplorer({ THREE }) {
   }
   const faceOpen = painted(faceTexture(false));
   const faceBlink = painted(faceTexture(true));
-  const jacketTexture = pixels(rect => {
-    rect('#875a38', 0, 0, 32, 32);
-    for (let i = 0; i < 36; i++) rect(i % 2 ? '#91633e' : '#7e5234', (i * 13) % 31, (i * 7) % 31, 2, 1);
-    rect('#67432c', 0, 0, 2, 32); rect('#67432c', 30, 0, 2, 32);
-    rect('#b0824f', 3, 3, 26, 1); rect('#b0824f', 3, 29, 26, 1);
-    rect('#d7c399', 12, 0, 8, 32); rect('#b9a67e', 15, 3, 2, 29);
-    rect('#65412c', 10, 0, 2, 32); rect('#65412c', 20, 0, 2, 32);
-    rect('#ab7747', 2, 13, 7, 8); rect('#704830', 2, 13, 7, 2);
-    rect('#ab7747', 23, 13, 7, 8); rect('#704830', 23, 13, 7, 2);
-    rect('#cfb073', 5, 15, 2, 2); rect('#cfb073', 26, 15, 2, 2);
-  });
-  const jacket = painted(jacketTexture);
-  const sleeve = painted(pixels(rect => {
-    rect('#805335', 0, 0, 32, 32);
-    rect('#9b6a40', 3, 0, 2, 32); rect('#5f402c', 25, 0, 3, 32);
-    rect('#ac7e4e', 0, 26, 32, 2); rect('#67442d', 0, 29, 32, 3);
-    rect('#70492f', 8, 17, 12, 2);
-  }));
+  const jacket = painted(pixels(rect => paintCoat(rect, look.coat)));
+  const sleeve = painted(pixels(rect => paintSleeve(rect, look.coat)));
   const trousers = painted(pixels(rect => {
     rect('#a49b6e', 0, 0, 32, 32);
     rect('#b5aa7b', 4, 0, 9, 32); rect('#817d58', 25, 0, 3, 32);
     rect('#8e875e', 3, 11, 11, 2); rect('#c0b487', 4, 14, 9, 1);
     rect('#8c8159', 0, 28, 32, 2);
-  }));
-  const hatMaterial = painted(pixels(rect => {
-    rect('#895b34', 0, 0, 32, 32);
-    rect('#95683c', 3, 2, 24, 2); rect('#6b472c', 0, 28, 32, 4);
-    rect('#7c522f', 4, 6, 2, 18); rect('#a07743', 26, 7, 2, 15);
   }));
   const bootMaterial = painted(pixels(rect => {
     rect('#51382b', 0, 0, 32, 32);
@@ -141,7 +132,8 @@ export function createExplorer({ THREE }) {
   box(torso, shirt, -0.051, 0.258, 0.116, 0.08, 0.055, 0.03).rotation.z = -0.32;
   box(torso, shirt, 0.051, 0.258, 0.116, 0.08, 0.055, 0.03).rotation.z = 0.32;
   box(torso, skin, 0, 0.282, 0, 0.108, 0.085, 0.105);
-  box(torso, leatherDark, 0, 0.11, -0.158, 0.23, 0.25, 0.115);
+  const backBundle = box(torso, leatherDark, 0, 0.11, -0.158, 0.23, 0.25, 0.115);
+  backBundle.name = 'back-bundle';
   box(torso, sleeve, 0, 0.215, -0.16, 0.25, 0.06, 0.13);
   box(torso, brass, 0, 0.15, -0.221, 0.035, 0.058, 0.012);
   const chestStrap = box(torso, leatherDark, -0.015, 0.125, 0.123, 0.035, 0.39, 0.018);
@@ -153,14 +145,8 @@ export function createExplorer({ THREE }) {
   box(headPivot, headMaterials, 0, 0, 0, 0.307, 0.272, 0.268);
   box(headPivot, skin, -0.168, -0.013, 0.005, 0.044, 0.081, 0.063);
   box(headPivot, skin, 0.168, -0.013, 0.005, 0.044, 0.081, 0.063);
-  box(headPivot, hatMaterial, 0, 0.15, 0.025, 0.51, 0.038, 0.414);
-  box(headPivot, hatMaterial, -0.247, 0.161, 0.019, 0.056, 0.032, 0.36).rotation.z = -0.1;
-  box(headPivot, hatMaterial, 0.247, 0.161, 0.019, 0.056, 0.032, 0.36).rotation.z = 0.1;
-  box(headPivot, hatMaterial, 0, 0.219, -0.005, 0.351, 0.125, 0.291);
-  box(headPivot, leatherDark, 0, 0.183, -0.005, 0.36, 0.047, 0.301);
-  box(headPivot, hatMaterial, 0, 0.286, -0.018, 0.29, 0.029, 0.248);
-  box(headPivot, leatherDark, 0, 0.302, -0.032, 0.08, 0.009, 0.158);
-  box(headPivot, brass, -0.18, 0.185, 0.035, 0.014, 0.035, 0.06);
+  const hatSlot = new THREE.Group();
+  headPivot.add(hatSlot);
 
   function arm(x) {
     const shoulder = new THREE.Group(); shoulder.position.set(x, 0.237, 0); torso.add(shoulder);
@@ -179,24 +165,18 @@ export function createExplorer({ THREE }) {
   box(satchel, leatherDark, 0, 0.049, 0.016, 0.181, 0.055, 0.129);
   box(satchel, brass, 0, 0.005, 0.067, 0.031, 0.048, 0.012);
 
-  const torch = new THREE.Group(); torch.position.set(0.075, 0, 0.035); rightArm.hand.add(torch);
-  box(torch, leatherDark, 0, 0.08, 0, 0.046, 0.3, 0.046);
-  box(torch, sleeve, 0, 0.006, 0, 0.058, 0.075, 0.058);
-  box(torch, brass, 0, 0.226, 0, 0.084, 0.068, 0.084);
-  const flame = new THREE.Group(); flame.position.y = 0.278; torch.add(flame);
-  const fireOrange = solid(0xf48b27, { emissive: 0xff6b16, emissiveIntensity: 2.1, toneMapped: false });
-  const fireGold = solid(0xffd469, { emissive: 0xffb62c, emissiveIntensity: 2.7, toneMapped: false });
-  const fireCore = solid(0xffefbb, { emissive: 0xffe2a0, emissiveIntensity: 3, toneMapped: false });
-  box(flame, fireOrange, 0, 0.046, 0, 0.108, 0.127, 0.102);
-  box(flame, fireGold, 0.01, 0.105, 0.008, 0.075, 0.153, 0.078);
-  box(flame, fireCore, -0.008, 0.055, 0.053, 0.035, 0.094, 0.024);
-  const emberA = box(flame, fireGold, 0.025, 0.206, 0, 0.018, 0.025, 0.018);
-  const emberB = box(flame, fireOrange, -0.015, 0.255, 0.01, 0.012, 0.018, 0.012);
-  flame.traverse(object => { if (object.isMesh) { object.castShadow = false; object.receiveShadow = false; } });
-  const torchLight = new THREE.PointLight(0xffb85f, 2.4, 3.1, 1.8);
-  torchLight.position.set(0, 0.365, 0.04);
-  torchLight.castShadow = false;
-  torch.add(torchLight);
+  const capeSlot = new THREE.Group();
+  torso.add(capeSlot);
+  const lightSlot = new THREE.Group();
+  rightArm.hand.add(lightSlot);
+  // Equipment is rebuilt on demand; the rig only keeps the mount points.
+  const worn = { hat: null, cape: null, light: null };
+  const mounts = { hat: hatSlot, cape: capeSlot, light: lightSlot };
+  function fit(slot) {
+    worn[slot]?.dispose();
+    worn[slot] = buildGear({ THREE, slot, palette: look[slot] });
+    mounts[slot].add(worn[slot].root);
+  }
 
   function placeLeg(limb, cycle) {
     const stance = cycle < 0.5;
@@ -258,8 +238,9 @@ export function createExplorer({ THREE }) {
     rightArm.shoulder.rotation.x = -1.02 - phase * 0.11 * movement;
     rightArm.shoulder.rotation.z = 0.34;
     rightArm.elbow.rotation.x = -0.48 + phase * 0.075 * movement;
-    torch.rotation.x = -(rightArm.shoulder.rotation.x + rightArm.elbow.rotation.x) + Math.sin(time * 2.4) * 0.025;
-    torch.rotation.z = -rightArm.shoulder.rotation.z - 0.05 + secondary * 0.035 * movement;
+    // Whatever is equipped stays upright in the fist as the arm swings.
+    lightSlot.rotation.x = -(rightArm.shoulder.rotation.x + rightArm.elbow.rotation.x) + Math.sin(time * 2.4) * 0.025;
+    lightSlot.rotation.z = -rightArm.shoulder.rotation.z - 0.05 + secondary * 0.035 * movement;
     satchel.rotation.x = phase * 0.12 * movement;
     satchel.rotation.z = -0.04 + secondary * 0.065 * movement;
     headPivot.rotation.y = Math.sin(time * 0.75) * 0.035 * (1 - movement) - phase * 0.022 * movement;
@@ -268,23 +249,42 @@ export function createExplorer({ THREE }) {
     if (time >= blinkAt) { blinkUntil = time + 0.13; blinkAt = time + 3.6 + Math.abs(Math.sin(time)) * 2; }
     headMaterials[4] = time < blinkUntil ? faceBlink : faceOpen;
     const flicker = Math.sin(time * 19) * 0.065 + Math.sin(time * 31.7) * 0.04;
-    flame.scale.set(0.78 + flicker * 0.3, 0.85 + flicker, 0.78 + flicker * 0.3);
-    flame.rotation.z = Math.sin(time * 7.5) * 0.065;
-    flame.rotation.y = Math.sin(time * 3.2) * 0.13;
-    torchLight.intensity = Math.min(2.1, 1.45 + flicker * 3);
-    emberA.position.y = 0.185 + ((time * 0.22) % 0.11);
-    emberA.position.x = Math.sin(time * 5) * 0.028;
-    emberB.position.y = 0.195 + ((time * 0.18 + 0.045) % 0.15);
-    emberB.visible = Math.sin(time * 4.3) > -0.25;
+    const flame = worn.light?.flame;
+    if (flame) {
+      flame.scale.set(0.78 + flicker * 0.3, 0.85 + flicker, 0.78 + flicker * 0.3);
+      flame.rotation.z = Math.sin(time * 7.5) * 0.065;
+      flame.rotation.y = Math.sin(time * 3.2) * 0.13;
+    }
+    if (worn.light?.light) worn.light.light.intensity = Math.min(2.1, 1.45 + flicker * 3);
+    worn.light?.embers.forEach((ember, index) => {
+      ember.mesh.position.y = 0.185 + index * 0.01 + ((time * ember.drift + index * 0.045) % ember.span);
+      ember.mesh.position.x = Math.sin(time * (5 - index)) * ember.sway;
+      if (index) ember.mesh.visible = Math.sin(time * 4.3) > -0.25;
+    });
+    worn.cape?.animate?.(time);
+    worn.hat?.animate?.(time);
     return { footfall, foot };
   }
+  function wear() {
+    for (const repaint of repaints) repaint();
+    shirt.color.set(look.coat.shirt);
+    for (const slot of ['hat', 'cape', 'light']) fit(slot);
+  }
+  wear();
   update(0, 0, { moving: false, progress: 0 });
   return {
     root,
     update,
+    /** Swap the equipped cosmetics without touching the rig or its animation. */
+    setStyle(next) {
+      if (disposed) return;
+      look = resolveLook(next);
+      wear();
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
+      for (const piece of Object.values(worn)) piece?.dispose();
       root.removeFromParent();
       geometry.dispose();
       materials.forEach(material => material.dispose());

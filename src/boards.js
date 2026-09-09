@@ -15,6 +15,15 @@ const profiles = {
   obsidienne: ['volcano','Aiguilles d’obsidienne','needles',.98,1.12,2],
   forge: ['volcano','Enclume des anciens','forge',1.2,.94,3],
   caldera: ['volcano','Couronne de la caldeira','caldera',1.14,1.13,4],
+  gardiens: ['jungle','Mare des gardiens','roots',1.06,.97,0],
+  sentinelle: ['jungle','Ronde des lianes','terrace',.95,1.16,1],
+  sceaux: ['jungle','Sanctuaire scellé','temple',1.13,.96,2],
+  contrepoids: ['jungle','Salle du contrepoids','temple',1.02,1.08,3],
+  vigie: ['jungle','Poste de la vigie','roots',1.16,1.02,4],
+  reflux: ['atlantis','Bassin du reflux','reef',1.11,.95,1],
+  estran: ['atlantis','Terrasses de l’estran','aqueduct',.96,1.15,3],
+  fissures: ['volcano','Faille naissante','chasm',1.05,.98,2],
+  sacrifice: ['volcano','Pont sacrifié','needles',1.09,1.09,4],
 };
 export function getBoardProfile(id) {
   const [biome,name,structure,sx,sz,variant] = profiles[id] || profiles.aube;
@@ -198,12 +207,27 @@ export function createTileScenery({THREE,tile,profile}) {
   if(tile.hazard) return kit;
   if(biome==='jungle') {
     const leaf=mat(v===0?0x809943:0x4f773d),stone=mat(0x8a9d73),earth=mat(0x5e6138);
-    if(solid) {
-      mesh(box,stone,0,.17,0,.38,.28,.35);
-      mesh(box,stone,0,.34,0,.43,.1,.39);
-      for(const x of [-.095,.095]) mesh(box,earth,x,.255,.183,.065,.035,.018);
-      mesh(box,earth,0,.17,.184,.10,.022,.018);
-      mesh(rock,leaf,-.15,.42,-.11,.13,.055,.11);
+    // Three different ruins, so a row of blank stones never reads as a row of faces.
+    if(solid && v===0) {
+      // A cairn left by earlier travellers; no two stones sit square to the next.
+      let height=.06;
+      [[.36,.15,.33],[.29,.13,.26],[.19,.11,.18]].forEach(([w,h,d],i)=>{
+        mesh(box,stone,i%2?.04:-.035,height+h/2,i*.012,w,h,d).rotation.y=.24+i*.5;
+        height+=h;
+      });
+      mesh(rock,leaf,-.09,height+.02,-.05,.12,.05,.1);
+    } else if(solid && v===1) {
+      // A carved stele, its grooves worn vertical by the rain.
+      mesh(box,stone,0,.22,0,.3,.44,.17);
+      mesh(box,stone,.015,.46,0,.24,.07,.14);
+      for(const x of [-.08,0,.08]) mesh(box,earth,x,.24,.088,.025,.3,.015);
+      mesh(rock,leaf,-.11,.5,-.03,.11,.05,.09);
+    } else if(solid) {
+      // A boulder the forest has nearly finished swallowing.
+      mesh(rock,stone,0,.16,0,.37,.3,.35).rotation.set(.28,.9,.19);
+      for(let i=0;i<3;i++) {
+        mesh(rock,leaf,Math.cos(i*2.1)*.15,.25+(i%2)*.04,Math.sin(i*2.1)*.14,.15,.06,.13).rotation.y=i*1.7;
+      }
     }
     for(let i=0;i<3;i++) {
       const x=v===1?-.45:.45,z=-.43+i*.025;

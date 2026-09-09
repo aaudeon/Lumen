@@ -1,8 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './home.css';
 import { BIOMES, getBiome } from './campaign.js';
+import { walletTotal } from './score.js';
+import { CATALOGUE, DEFAULT_LOOK, ITEMS, owns } from './cosmetics.js';
+import { createExplorerPreview } from './preview.js';
 
-const stops = [{x:30,y:83}, {x:63,y:66}, {x:32,y:49}, {x:65,y:33}, {x:46,y:17}];
+const stops = [{x:30,y:83}, {x:63,y:66}, {x:32,y:49}, {x:65,y:33}, {x:46,y:17},
+  {x:19,y:70}, {x:14,y:47}, {x:24,y:27}, {x:52,y:41}, {x:78,y:49}];
 const mapPalettes = {
   jungle: {sand:'#beae73',cliff:'#615c3b',ground:['#6e9660','#477a56','#305d47'],trail:'#c4b78a',water:['#204f4a','#66b2a0'],waterEdge:'#8aa17b',stream:'#82bdaa',sea:'MER DES BRUMES',coast:'CÔTE ÉMERAUDE'},
   atlantis: {sand:'#aac0b3',cliff:'#36606b',ground:['#528986','#336b76','#2c5267'],trail:'#b2d4cd',water:['#123e66','#4caaba'],waterEdge:'#689ca6',stream:'#90d9e1',sea:'ABYSSES DE NACRE',coast:'ARCHIPEL ENGLOUTI'},
@@ -90,27 +94,56 @@ function IslandMap({ selected, progress, levels, onSelect, biome }) {
     <canvas ref={canvasRef} aria-hidden="true"/>
     <div className="map-compass" aria-hidden="true"><span>N</span>✧</div>
     {levels.map((level,index)=>{
-      const done=progress[level.id]?.completed;const active=selected===level.id;const at=stops[index]||stops[4];
+      const done=progress[level.id]?.completed;const active=selected===level.id;const at=stops[index%stops.length];
+      const treasure=level.relicName&&progress[level.id]?.relic;
       return <button key={level.id} className={`map-stop ${done?'completed':''} ${active?'chosen':''}`} style={{left:`${at.x}%`,top:`${at.y}%`}} onClick={()=>onSelect(level.id)} aria-pressed={active} aria-label={`Niveau ${level.chapter} : ${level.name}${done?', terminé':''}`}>
         {active&&<span className="map-you">{done?'À REVISITER':'VOTRE DESTINATION'}</span>}
         <span className="map-stop-number">{done?'✓':String(level.chapter).padStart(2,'0')}</span>
-        <span className="map-stop-caption"><small>PASSAGE {level.biomeLevel} / 5</small><strong>{level.name}</strong>{done&&<em>Exploré</em>}</span>
+        <span className="map-stop-caption"><small>PASSAGE {level.biomeLevel} / {levels.length}</small><strong>{level.name}</strong>{done&&<em>Exploré{treasure?' · ✦':''}</em>}</span>
       </button>;
     })}
     <div className="map-fireflies" aria-hidden="true">{Array.from({length:12},(_,i)=><i key={i} style={{left:`${20+(i*17)%65}%`,top:`${15+(i*23)%65}%`,animationDelay:`${i*-.7}s`}}/>)}</div>
   </div>;
 }
 
-export default function HomeScreen({levels,progress,currentGame,busy,error,onStart,onSound,sound}) {
+
+/** The rig itself, wearing what you are about to buy. Drag to turn it. */
+function ExplorerStage({style,slot,biome}) {
+  const host=useRef(null);
+  const view=useRef(null);
+  const [failed,setFailed]=useState(false);
+  useEffect(()=>{
+    let preview=null;
+    try{preview=createExplorerPreview(host.current,{style,biome});}
+    catch{setFailed(true);return undefined;}
+    view.current=preview;
+    return()=>{view.current=null;preview.dispose();};
+  },[biome]);
+  useEffect(()=>{view.current?.setStyle(style);},[style]);
+  useEffect(()=>{view.current?.focusSlot(slot);},[slot]);
+  return <div className="store-stage" ref={host}>{failed&&<p className="store-fallback">L’aperçu 3D demande WebGL. Les tenues restent achetables : vous les verrez sur le plateau.</p>}</div>;
+}
+
+export default function HomeScreen({levels,progress,currentGame,busy,error,onStart,onSound,sound,wardrobe,credits=0,onBuy,onEquip}) {
   const [selected,setSelected]=useState((!currentGame?.won&&currentGame?.levelId)||levels.find(level=>!progress[level.id]?.completed)?.id||levels[0]?.id);
   const [panel,setPanel]=useState(null);
+  const [shopNote,setShopNote]=useState('');
+  const [trying,setTrying]=useState(null);
   const closeButton = useRef(null);
   const previousFocus = useRef(null);
   useEffect(()=>{if(!selected&&levels.length&&!busy)setSelected((!currentGame?.won&&currentGame?.levelId)||levels.find(level=>!progress[level.id]?.completed)?.id||levels[0].id);},[levels,selected,currentGame,progress,busy]);
   useEffect(()=>{
     if(!panel)return;
     previousFocus.current=document.activeElement;closeButton.current?.focus();
-    const key=event=>{if(event.key==='Escape')setPanel(null);if(event.key==='Tab'){event.preventDefault();closeButton.current?.focus();}};
+    const key=event=>{
+      if(event.key==='Escape')setPanel(null);
+      if(event.key!=='Tab')return;
+      const dialog=closeButton.current?.closest('.home-modal');
+      const stops=[...(dialog?.querySelectorAll('button:not(:disabled)')||[])];
+      if(!stops.length)return;
+      const edge=event.shiftKey?stops[0]:stops.at(-1);
+      if(document.activeElement===edge){event.preventDefault();(event.shiftKey?stops.at(-1):stops[0]).focus();}
+    };
     document.addEventListener('keydown',key);return()=>{document.removeEventListener('keydown',key);previousFocus.current?.focus();};
   },[panel]);
   const level=levels.find(item=>item.id===selected);
@@ -118,7 +151,13 @@ export default function HomeScreen({levels,progress,currentGame,busy,error,onSta
   const worldLevels=levels.filter(item=>item.biome===biome.id);
   const worldCompleted=worldLevels.filter(item=>progress[item.id]?.completed).length;
   const completed=levels.filter(item=>progress[item.id]?.completed).length;
-  const total=levels.length||15;
+  const total=levels.length||24;
+  const relics=levels.filter(item=>item.relicName);
+  const found=relics.filter(item=>progress[item.id]?.relic).length;
+  const wallet=walletTotal(progress);
+  const points=value=>value.toLocaleString('fr-FR');
+  const equipped={...DEFAULT_LOOK,...wardrobe?.equipped};
+  const preview=trying?{...equipped,[ITEMS[trying].slot]:trying}:equipped;
   const resuming=Boolean(currentGame && currentGame.levelId===selected && currentGame.historyLength>0 && !currentGame.won);
   const done=progress[selected]?.completed;
   function selectWorld(id) {
@@ -133,15 +172,48 @@ export default function HomeScreen({levels,progress,currentGame,busy,error,onSta
       <div className="home-brand"><span>✧</span><div>LUMEN<small>LES CHEMINS OUBLIÉS</small></div></div>
       <nav className="biome-tabs" aria-label="Mondes de l’expédition">{BIOMES.map(world=>{
         const count=levels.filter(item=>item.biome===world.id&&progress[item.id]?.completed).length;
-        return <button key={world.id} data-world={world.id} aria-pressed={biome.id===world.id} disabled={busy||!levels.length} onClick={()=>selectWorld(world.id)}><span aria-hidden="true">{world.symbol}</span><strong>{world.name}<small>{count} / 5 explorés</small></strong>{count===5&&<i aria-hidden="true">✓</i>}</button>;
+        const size=levels.filter(item=>item.biome===world.id).length||5;
+        return <button key={world.id} data-world={world.id} aria-pressed={biome.id===world.id} disabled={busy||!levels.length} onClick={()=>selectWorld(world.id)}><span aria-hidden="true">{world.symbol}</span><strong>{world.name}<small>{count} / {size} explorés</small></strong>{count===size&&<i aria-hidden="true">✓</i>}</button>;
       })}</nav>
-      <div className="home-header-actions"><button onClick={onSound} aria-label={sound?'Couper le son':'Activer le son'} aria-pressed={sound}>{sound?'♫':'♪'}<span>{sound?'Son activé':'Son coupé'}</span></button><button onClick={()=>setPanel('help')} aria-label="Comment jouer">?</button></div>
+      <div className="home-header-actions"><span className="home-wallet" title="Portefeuille de l’expédition"><em>✦</em><strong>{points(wallet)}</strong><small>PTS</small></span><button onClick={onSound} aria-label={sound?'Couper le son':'Activer le son'} aria-pressed={sound}>{sound?'♫':'♪'}<span>{sound?'Son activé':'Son coupé'}</span></button><button onClick={()=>setPanel('help')} aria-label="Comment jouer">?</button></div>
     </header>
-    <section className="home-intro"><p className="home-kicker">MONDE {biome.world} · CINQ PASSAGES À RETROUVER</p><h1>{biome.headline} <br/><em>{biome.emphasis}</em></h1><p>{biome.description}</p><div className="expedition-progress"><div><span>{biome.title.toUpperCase()}</span><strong>{worldCompleted}<small> / 5</small></strong></div><div className="home-progress-track" role="progressbar" aria-label={`Passages explorés : ${biome.name}`} aria-valuenow={worldCompleted} aria-valuemin={0} aria-valuemax={5}><i style={{width:`${worldCompleted/5*100}%`}}/></div><small>{worldCompleted===5?'Ce monde vous a livré tous ses secrets.':'passages explorés · à votre rythme'}</small></div></section>
+    <section className="home-intro"><p className="home-kicker">MONDE {biome.world} · {worldLevels.length || 5} PASSAGES À RETROUVER</p><h1>{biome.headline} <br/><em>{biome.emphasis}</em></h1><p>{biome.description}</p><div className="expedition-progress"><div><span>{biome.title.toUpperCase()}</span><strong>{worldCompleted}<small> / {worldLevels.length||5}</small></strong></div><div className="home-progress-track" role="progressbar" aria-label={`Passages explorés : ${biome.name}`} aria-valuenow={worldCompleted} aria-valuemin={0} aria-valuemax={worldLevels.length||5}><i style={{width:`${worldCompleted/(worldLevels.length||5)*100}%`}}/></div><small>{worldCompleted===worldLevels.length&&worldCompleted?'Ce monde vous a livré tous ses secrets.':'passages explorés · à votre rythme'}</small></div></section>
     <IslandMap selected={selected} progress={progress} levels={worldLevels} onSelect={setSelected} biome={biome}/>
-    <section className="expedition-card" aria-label="Destination sélectionnée"><div className="destination-icon" aria-hidden="true">{done?'✦':biome.symbol}</div><div className="destination-info"><p>NIVEAU {level?.chapter||1} / {total} <span>· {level?.difficulty||'Initiation'}</span></p><h2>{level?.name||'Préparation du voyage…'}</h2><p className="destination-description">{level?.subtitle||biome.description}</p>{level?.mechanic && <div className="mechanic-tag" title={level.mechanic.text}><span aria-hidden="true">◆</span>{level.mechanic.title}</div>}<small>{done?`✓ Exploré · record : ${progress[selected].moves} déplacements`:resuming?`Expédition en cours · ${currentGame.moves} déplacements`:'Un nouveau passage à découvrir'}</small></div><button className="home-play" disabled={busy||!level||!!error} onClick={()=>onStart(selected)}><span>{busy?'Préparation…':resuming?'Reprendre':done?'Rejouer':'Explorer'}<small>{resuming?'L’AVENTURE CONTINUE':`${biome.name.toUpperCase()} · PASSAGE ${level?.biomeLevel||1} / 5`}</small></span><b aria-hidden="true">→</b></button></section>
+    <section className="expedition-card" aria-label="Destination sélectionnée"><div className="destination-icon" aria-hidden="true">{done?'✦':biome.symbol}</div><div className="destination-info"><p>NIVEAU {level?.chapter||1} / {total} <span>· {level?.difficulty||'Initiation'}</span></p><h2>{level?.name||'Préparation du voyage…'}</h2><p className="destination-description">{level?.subtitle||biome.description}</p>{level?.mechanic && <div className="mechanic-tag" title={level.mechanic.text}><span aria-hidden="true">◆</span>{level.mechanic.title}</div>}{level?.relicName && <div className={`relic-tag ${progress[selected]?.relic?'found':''}`}><span aria-hidden="true">{progress[selected]?.relic?'✦':'✧'}</span>{progress[selected]?.relic?level.relicName:`Un trésor caché : ${level.relicName}`}</div>}<small>{done?`✓ Exploré · record : ${progress[selected].moves} déplacements${progress[selected].score?` · ${points(progress[selected].score)} pts`:''}`:resuming?`Expédition en cours · ${currentGame.moves} déplacements`:'Un nouveau passage à découvrir'}</small></div><button className="home-play" disabled={busy||!level||!!error} onClick={()=>onStart(selected)}><span>{busy?'Préparation…':resuming?'Reprendre':done?'Rejouer':'Explorer'}<small>{resuming?'L’AVENTURE CONTINUE':`${biome.name.toUpperCase()} · PASSAGE ${level?.biomeLevel||1} / ${worldLevels.length||5}`}</small></span><b aria-hidden="true">→</b></button></section>
     {error&&<div className="home-error" role="alert">{error}<button onClick={()=>location.reload()}>Réessayer</button></div>}
-    <footer className="home-footer"><button onClick={()=>setPanel('journal')}><span aria-hidden="true">▤</span> Carnet d’expédition <em>{completed} / {total}</em></button><p>Jungle → Atlantide → Volcan · cinq niveaux par monde</p><span className="home-local">● SAUVEGARDÉ SUR CET APPAREIL</span></footer>
-    {panel&&<div className="home-modal-backdrop" onClick={event=>{if(event.target===event.currentTarget)setPanel(null);}}><section className="home-modal" role="dialog" aria-modal="true" aria-label={panel==='journal'?'Carnet d’expédition':'Comment jouer'}><button ref={closeButton} className="home-modal-close" onClick={()=>setPanel(null)} aria-label="Fermer">×</button><p className="home-kicker">LES NOTES DU VOYAGEUR</p><h2>{panel==='journal'?'Votre carnet d’expédition':'Un chemin, une pierre à la fois.'}</h2>{panel==='journal'?<><p className="home-modal-intro">{completed} passage{completed>1?'s':''} retrouvé{completed>1?'s':''} sur {total}. Vos records restent dans ce navigateur.</p><div className="journal-levels">{levels.map((item,i)=><article key={item.id}><span>{progress[item.id]?.completed?'✦':String(i+1).padStart(2,'0')}</span><div><h3>{item.name}</h3><p>{progress[item.id]?.completed?`Exploré · meilleur parcours : ${progress[item.id].moves} déplacements`:currentGame?.levelId===item.id&&currentGame.historyLength?'Expédition en cours':'À découvrir'}</p></div><small>{item.difficulty}</small></article>)}</div><p className="home-modal-note">Tous les chapitres sont ouverts : choisissez votre propre itinéraire.</p></>:<ol className="home-guide"><li><strong>Faites glisser les pierres.</strong><p>Une dalle voisine du vide peut s’y déplacer. Assemblez les chemins pour ouvrir le passage.</p></li><li><strong>Explorez à tout moment.</strong><p>En mode Explorer, touchez une dalle reliée pour y conduire Lumen. Sa présence verrouille la dalle qu’il occupe.</p></li><li><strong>Rejoignez le portail.</strong><p>Avancez, libérez les pierres, puis construisez la suite. Les indices et l’annulation vous accompagnent.</p></li></ol>}</section></div>}
+    <footer className="home-footer"><button className="home-shop-open" onClick={()=>{setShopNote('');setTrying(null);setPanel('store');}}><span aria-hidden="true">✧</span> Boutique de l’expédition <em className="wallet-count">{points(credits)} crédits</em></button><button onClick={()=>setPanel('journal')}><span aria-hidden="true">▤</span> Carnet d’expédition <em>{completed} / {total}</em>{relics.length>0&&<em className="relic-count">✦ {found} / {relics.length}</em>}<em className="wallet-count">{points(wallet)} pts</em></button><p>Jungle → Atlantide → Volcan · les épreuves closent chaque monde</p><span className="home-local">● SAUVEGARDÉ SUR CET APPAREIL</span></footer>
+    {panel&&<div className="home-modal-backdrop" onClick={event=>{if(event.target===event.currentTarget)setPanel(null);}}><section className={`home-modal ${panel==='store'?'home-modal-wide':''}`} role="dialog" aria-modal="true" aria-label={panel==='journal'?'Carnet d’expédition':panel==='store'?'Boutique de l’expédition':'Comment jouer'}><button ref={closeButton} className="home-modal-close" onClick={()=>setPanel(null)} aria-label="Fermer">×</button><p className="home-kicker">{panel==='store'?'LE COMPTOIR DU CAMP':'LES NOTES DU VOYAGEUR'}</p><h2>{panel==='journal'?'Votre carnet d’expédition':panel==='store'?'Habillez votre aventurier.':'Un chemin, une pierre à la fois.'}</h2>{panel==='store'?<>
+      <p className="home-modal-intro">Les points gagnés à la sortie de chaque passage servent ici. Votre portefeuille reste un record : seuls les crédits disponibles baissent quand vous achetez.</p>
+      <div className="store-layout">
+        <div className="store-preview">
+          <ExplorerStage style={preview} slot={trying?ITEMS[trying].slot:null} biome={biome.id}/>
+          <p className="store-caption">{trying?<><em>Essayage</em> {ITEMS[trying].name}</>:'Votre aventurier · faites glisser pour le tourner'}</p>
+          <div className="store-balance"><span>CRÉDITS DISPONIBLES</span><strong>{points(credits)}</strong><small>portefeuille {points(wallet)} pts · dépensé {points(wardrobe?.spent||0)}</small></div>
+          {shopNote&&<p className="store-note" role="status">{shopNote}</p>}
+        </div>
+        <div className="store-shelves">{CATALOGUE.map(group=><section className="store-group" key={group.slot}>
+          <h3>{group.title}<small>{group.note}</small></h3>
+          <div className="store-items">{group.items.map(item=>{
+            const held=owns(wardrobe,item.id);
+            const worn=wardrobe?.equipped?.[group.slot]===item.id;
+            const short=!held&&credits<item.price;
+            return <article key={item.id} className={`store-item ${worn?'worn':''} ${held?'held':''}`}
+              onMouseEnter={()=>setTrying(item.id)} onMouseLeave={()=>setTrying(null)} onFocus={()=>setTrying(item.id)}>
+              <span className="store-mark" aria-hidden="true">{worn?'✦':held?'✧':'·'}</span>
+              <div><strong>{item.name}</strong><p>{item.story}</p></div>
+              <div className="store-action">
+                {worn?<em>Porté</em>:held?<button onClick={()=>{onEquip?.(item.id);setShopNote(`${item.name} · équipé.`);}}>Porter</button>
+                  :<><span className="store-price">{points(item.price)}</span>
+                    <button disabled={short} onClick={()=>{
+                      const result=onBuy?.(item.id);
+                      setShopNote(result?.ok?`${item.name} acheté et porté.`:result?.reason||'');
+                    }}>{short?'Trop cher':'Acheter'}</button></>}
+              </div>
+            </article>;
+          })}</div>
+        </section>)}</div>
+      </div>
+      <p className="home-modal-note">Tout est cosmétique : rien ici ne change les règles, la difficulté ni vos records.</p>
+    </>:panel==='journal'?<><p className="home-modal-intro">{completed} passage{completed>1?'s':''} retrouvé{completed>1?'s':''} sur {total}{relics.length>0?`, et ${found} relique${found>1?'s':''} sur ${relics.length} rapportée${found>1?'s':''}`:''}. Vos records restent dans ce navigateur.</p><p className="journal-wallet"><span>PORTEFEUILLE</span><strong>{points(wallet)}</strong><small>points · la somme de votre meilleur passage sur chaque niveau</small></p><div className="journal-levels">{levels.map((item,i)=><article key={item.id} className={progress[item.id]?.relic?'has-relic':''}><span>{progress[item.id]?.completed?'✦':String(i+1).padStart(2,'0')}</span><div><h3>{item.name}</h3><p>{progress[item.id]?.completed?`Exploré · meilleur parcours : ${progress[item.id].moves} déplacements`:currentGame?.levelId===item.id&&currentGame.historyLength?'Expédition en cours':'À découvrir'}</p>{progress[item.id]?.score>0&&<p className="journal-score">{points(progress[item.id].score)} points</p>}{item.relicName&&<p className="journal-relic">{progress[item.id]?.relic?`✦ ${item.relicName}`:`✧ ${item.relicName} · encore sur place`}</p>}</div><small>{item.difficulty}</small></article>)}</div><p className="home-modal-note">Tous les chapitres sont ouverts : choisissez votre propre itinéraire. Les reliques sont facultatives — un niveau se termine sans elles.</p></>:<ol className="home-guide"><li><strong>Faites glisser les pierres.</strong><p>Une dalle voisine du vide peut s’y déplacer. Assemblez les chemins pour ouvrir le passage.</p></li><li><strong>Explorez à tout moment.</strong><p>En mode Explorer, touchez une dalle reliée pour y conduire Lumen. Sa présence verrouille la dalle qu’il occupe.</p></li><li><strong>Rejoignez le portail.</strong><p>Avancez, libérez les pierres, puis construisez la suite. Les indices et l’annulation vous accompagnent.</p></li></ol>}</section></div>}
   </main>;
 }

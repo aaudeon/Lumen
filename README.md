@@ -1,6 +1,6 @@
 # LUMEN · Les chemins oubliés
 
-Un prototype jouable de **taquin d'aventure**, en React, Three.js et Python. Faites glisser les dalles pour guider Lumen de l'entrée à la sortie à travers **15 niveaux dans trois mondes : la jungle, l'Atlantide et le volcan**. Explorez le plateau en 3D sous tous les angles dans une ambiance d'expédition archéologique. Le décor, le personnage, les effets lumineux et les particules sont dessinés dans un canvas WebGL.
+Un prototype jouable de **taquin d'aventure**, en React, Three.js et Python. Faites glisser les dalles pour guider Lumen de l'entrée à la sortie à travers **24 niveaux dans trois mondes : la jungle, l'Atlantide et le volcan**. Explorez le plateau en 3D sous tous les angles dans une ambiance d'expédition archéologique. Le décor, le personnage, les effets lumineux et les particules sont dessinés dans un canvas WebGL.
 
 ## Lancer le jeu
 
@@ -30,7 +30,7 @@ python start.py --port 8766
 
 ## Comment jouer
 
-Le jeu s'ouvre sur une **carte d'expédition** : choisissez l'un des trois mondes, chacun avec sa carte distincte et ses cinq passages, puis **Explorer**, **Reprendre** ou **Rejouer**. Les passages déjà terminés portent un sceau, la barre de progression compte les niveaux explorés et le **Carnet d'expédition** rassemble vos records. Les quinze niveaux restent libres d'accès.
+Le jeu s'ouvre sur une **carte d'expédition** : choisissez l'un des trois mondes, chacun avec sa carte distincte, ses cinq passages d'origine et ses épreuves plus récentes, puis **Explorer**, **Reprendre** ou **Rejouer**. Les passages déjà terminés portent un sceau, la barre de progression compte les niveaux explorés et le **Carnet d'expédition** rassemble vos records. Les vingt-quatre niveaux restent libres d'accès.
 
 Le bouton **Carte** du plateau permet de revenir à l'accueil et de reprendre la partie en cours. Le chronomètre et le rendu 3D se mettent en pause dans l'accueil. Après une victoire, poursuivez vers le niveau suivant ou retrouvez votre progression sur la carte : le niveau 5 mène au 6 en Atlantide, et le 10 au 11 dans le volcan.
 
@@ -46,6 +46,11 @@ Vous pouvez alterner librement entre les deux modes : il n'est pas nécessaire d
 - **Jungle — crocodiles :** Lumen ne peut pas traverser une dalle occupée par un crocodile. La dalle reste mobile : le crocodile voyage avec elle. Déplacez-la pour dégager le passage ou construire un détour.
 - **Atlantide — courants :** une dalle marquée d'une flèche impose la direction de sortie de Lumen. Son entrée reste possible par les ouvertures reliées ; construisez le chemin dans le sens du courant.
 - **Volcan — dalles fragiles :** Lumen traverse les pierres fissurées en une seule course jusqu'à une dalle stable ou à la sortie. Il ne peut pas s'arrêter sur une pierre fragile. Les dalles s'effondrent derrière lui et laissent de nouveaux vides où faire glisser les pierres restantes. Certains passages demandent ainsi de traverser d'abord, puis de reconstruire la suite du chemin.
+- **Jungle — crocodiles en maraude :** dans les épreuves de la jungle, le gardien change de pierre à **chaque dalle déplacée**, le long d'une ronde fixe. Un anneau marque la case qu'il rejoindra ; il attend si elle est vide ou occupée. Sa pierre est verrouillée tant qu'il pèse dessus. Comptez vos déplacements pour passer dans son dos.
+- **Jungle — sceaux et portes :** une porte de pierre barre le passage tant que son sceau reste éteint. Un **levier** s'allume dès que Lumen s'y arrête et le reste ; un **sceau à poids** n'est actif que tant que la **pierre de lest** l'occupe. Le puzzle consiste alors à livrer cette pierre au bon endroit.
+- **Atlantide — marées :** le levier de marée **inverse tous les courants** et découvre les **dalles immergées**. Il compte comme un déplacement, s'annule, et permet de franchir un palier puis l'autre.
+- **Volcan — réactions en chaîne :** une dalle qui s'effondre **lézarde ses voisines fissurées** : elles deviennent fragiles à leur tour. En mode explorer, l'aperçu d'un trajet colore les pierres qui tomberont et celles qui se fendront, pour choisir quels passages sacrifier.
+- **Partout — trésors facultatifs :** seize passages cachent une relique dans un cul-de-sac. Elle coûte un détour, ne raccourcit jamais la route, et **le niveau se termine sans elle**. Les reliques rapportées s'affichent dans le carnet d'expédition.
 
 La traversée des dalles fragiles est automatique une fois l'arrêt choisi : préparez un trajet continu vers un endroit sûr avant de partir. **Il n'y a pas de compte à rebours** ni de clics rapides à enchaîner. L'effondrement change les possibilités de déplacement du taquin.
 
@@ -67,13 +72,53 @@ La traversée des dalles fragiles est automatique une fois l'arrêt choisi : pr�
 
 Le bouton **Avancer** rejoint lui aussi le prochain arrêt sûr. Quand le portail est accessible, il devient **Vers la sortie** et conduit Lumen jusqu'au bout du passage. Pour choisir une autre destination, cliquez sur la dalle accessible souhaitée en mode explorer. Un geste de rotation déplace la caméra ; un clic ou toucher bref actionne la dalle. Les flèches suivent toujours les lignes et colonnes du plateau, quelle que soit la caméra. Le bouton **Vue du dessus** facilite le jeu au clavier.
 
-Les niveaux terminés et vos records restent enregistrés dans ce navigateur, y compris ceux des trois niveaux d'origine. Une partie en cours reste disponible tant que le serveur Python n'a pas été arrêté.
+Les niveaux terminés, vos records, vos points et votre garde-robe restent enregistrés dans ce navigateur, y compris ceux des trois niveaux d'origine. Une partie en cours reste disponible tant que le serveur Python n'a pas été arrêté.
 
-## Les quinze passages
+## Le score et le portefeuille
 
-- **Jungle · niveaux 1 à 5 :** Le premier passage ; Les jardins suspendus ; Le sentier des brumes ; Le temple de la canopée ; La pierre voyageuse.
-- **Atlantide · niveaux 6 à 10 :** Les portes du lagon ; La salle des marées ; Le labyrinthe de corail ; Les archives des abysses ; Le sanctuaire du trident.
-- **Volcan · niveaux 11 à 15 :** Le seuil des cendres ; Le pont des braises ; La spirale d'obsidienne ; La forge des anciens ; Le cœur de la caldeira.
+À la sortie d'un niveau, la course est notée sur cinq parts, puis multipliée par la difficulté du passage :
+
+| Part | Points | Ce qui la remplit |
+| --- | --- | --- |
+| Passage ouvert | 400 | acquis dès que Lumen franchit le portail |
+| Déplacements de dalles | 300 | atteint quand vous égalez le `par` du niveau |
+| Pas parcourus | 250 | atteint quand vous égalez le trajet de référence |
+| Temps | 250 | atteint sous `30 s + 9 × par + 3 × pas de référence` |
+| Trésor rapporté | 200 | bonus, jamais une part du reste |
+
+**Faire mieux que la référence ne rapporte pas plus que l'atteindre** : il n'y a rien à optimiser au-delà de la solution d'auteur. À l'inverse, aucune part ne devient négative — une course lente et prudente garde ses 400 points de passage. Le multiplicateur va de 1 (Initiation, Découverte) à 2,5 (Légende), pour qu'un passage difficile vaille ce qu'il demande.
+
+Le **portefeuille** additionne votre **meilleure course sur chaque niveau**. Rejouer ne peut donc que l'augmenter, et refaire le premier niveau en boucle ne rapporte rien. Il s'affiche en haut de l'écran de jeu, dans l'en-tête de la carte et dans le carnet d'expédition, où chaque passage montre son propre record. Compter large : une campagne jouée sans chercher l'efficacité tourne autour de 32 000 points, une campagne parfaite avec tous les trésors autour de 48 000.
+
+Le barème vit dans [src/score.js](src/score.js), à l'écart de l'interface, et `tests/score.test.js` le vérifie.
+
+## La boutique de l'expédition
+
+Depuis le pied de la carte d'expédition, la **boutique** échange les points contre de l'équipement. Le portefeuille reste un record et ne baisse jamais : les achats sont retenus à part, et les **crédits disponibles** valent portefeuille moins dépenses.
+
+Le panneau s'ouvre sur **l'aventurier en 3D**, qui tourne lentement et se laisse orienter à la souris. Survoler un article l'**essaie** immédiatement sur le personnage, et la caméra cadre la partie concernée — la tête pour un chapeau, le dos pour une cape. Rien n'est acheté tant que vous ne cliquez pas.
+
+Trois emplacements portent un **modèle 3D à part entière**, pas une teinte :
+
+- **Couvre-chef** — feutre à bord large (offert), chapeau de paille tressé au bord effiloché (900), casque de nacre à crête et couvre-joues (2 400), capuche d'obsidienne à plaques anguleuses et braise au front (4 200).
+- **Cape** — aucune (offert), cape de mousse à l'ourlet déchiqueté (1 400), mante de corail avec des branches aux épaules (3 200), manteau de braise semé d'escarbilles qui palpitent (5 400).
+- **Lumière** — torche de bois (offert), lanterne de laiton qui pend sous le poing (1 800), cristal d'azur flottant escorté de deux éclats (3 600), brasero suspendu à ses chaînes, plein de charbons (6 000).
+
+Un quatrième emplacement, la **teinture du manteau**, repeint la veste, les manches et la chemise (offert, puis 700 / 1 900 / 3 400).
+
+Tout est **cosmétique** : rien n'y touche aux règles, à la difficulté ni aux records. Chaque lumière porte sa propre flamme et éclaire réellement le plateau de sa couleur. Changer de tenue reconstruit la pièce concernée sur son point d'attache, sans toucher au reste du gréement ni interrompre l'animation.
+
+Le catalogue et les règles d'achat vivent dans [src/cosmetics.js](src/cosmetics.js), les modèles dans [src/gear.js](src/gear.js) et l'aperçu dans [src/preview.js](src/preview.js). `tests/cosmetics.test.js` couvre le catalogue, le solde, les achats refusés et l'équipement ; `tests/props.check.mjs` monte le personnage hors navigateur, lui fait essayer les seize pièces, vérifie que chacune apporte bien ses couleurs au rendu et qu'une douzaine de changements ne laisse aucune géométrie derrière elle.
+
+## Les vingt-quatre passages
+
+Chaque monde garde ses cinq passages d'origine, puis ses **épreuves** : des puzzles courts qui introduisent une règle, puis la combinent.
+
+- **Jungle · niveaux 1 à 10 :** Le premier passage ; Les jardins suspendus ; Le sentier des brumes ; Le temple de la canopée ; La pierre voyageuse — puis La ronde du gardien ; La sentinelle ; Le sceau du temple ; Le contrepoids ; La vigie.
+- **Atlantide · niveaux 11 à 17 :** Les portes du lagon ; La salle des marées ; Le labyrinthe de corail ; Les archives des abysses ; Le sanctuaire du trident — puis L'heure du reflux ; L'estran.
+- **Volcan · niveaux 18 à 24 :** Le seuil des cendres ; Le pont des braises ; La spirale d'obsidienne ; La forge des anciens ; Le cœur de la caldeira — puis Les premières fissures ; Le passage sacrifié.
+
+Chaque monde s'ouvre sur une courte scène d'arrivée, et chaque sortie de niveau est célébrée.
 
 ## Développement
 
@@ -119,8 +164,9 @@ Chaque monde possède son décor 3D : végétation et ruines dans la jungle ; co
 
 ```sh
 python -m unittest discover -s backend -v
-node --test tests/motion.test.js
+node --test tests/motion.test.js tests/score.test.js tests/cosmetics.test.js
+node tests/props.check.mjs
 npm run build
 ```
 
-Les tests Python couvrent les règles, les solutions des quinze niveaux, l'unicité des plateaux, les trois mondes et l'API. Ils vérifient aussi les crocodiles, les courants, les effondrements, les déplacements avec plusieurs vides et leur annulation. Les tests Node de `tests/motion.test.js` vérifient les virages, le trajet inverse, les courtes marches, les aperçus sûrs et le choix d'un arrêt après une traversée fragile. La dernière commande construit le frontend dans `dist/`.
+Les tests Python couvrent les règles, les solutions des vingt-quatre niveaux, l'unicité des plateaux, les trois mondes et l'API. Ils vérifient aussi les crocodiles fixes et en maraude, les courants, la marée, les leviers et sceaux à poids, les effondrements en chaîne, le caractère facultatif des reliques, les déplacements avec plusieurs vides et leur annulation. Les tests Node de `tests/score.test.js` vérifient le barème, ses bornes et la somme du portefeuille ; ceux de `tests/cosmetics.test.js` couvrent le catalogue et les achats ; ceux de `tests/motion.test.js` vérifient les virages, le trajet inverse, les courtes marches, les aperçus sûrs et le choix d'un arrêt après une traversée fragile. La dernière commande construit le frontend dans `dist/`.
