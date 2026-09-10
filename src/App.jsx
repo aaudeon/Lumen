@@ -405,7 +405,7 @@ export default function App() {
         <span className="chapter-count">{String(chapter + 1).padStart(2, '0')} <em>/ {String(levels.length || 15).padStart(2, '0')}</em></span>
       </nav>
       <div className="top-actions">
-        <span className="wallet-badge" title={`Portefeuille : ${wallet.toLocaleString('fr-FR')} pts · crédits disponibles : ${credits.toLocaleString('fr-FR')}`}><Icon name="relic" size={14}/><strong>{wallet.toLocaleString('fr-FR')}</strong><small>PTS</small></span>
+        <span className="wallet-badge" title={`Crédits disponibles : ${credits.toLocaleString('fr-FR')} · portefeuille : ${wallet.toLocaleString('fr-FR')} pts, un record qui ne baisse jamais`}><Icon name="relic" size={14}/><strong>{credits.toLocaleString('fr-FR')}</strong><small>CRÉDITS</small></span>
         <button className="map-return" disabled={busy} onClick={returnToMap} title="Revenir à la carte" aria-label="Revenir à la carte">← <span>Carte</span></button>
         <button className={`icon-button ${sound ? 'on' : ''}`} title={sound ? 'Couper l’ambiance (M)' : 'Activer l’ambiance (M)'} aria-label={sound ? 'Couper le son' : 'Activer le son'} aria-pressed={sound} onClick={toggleSound}><Icon name={sound ? 'volume' : 'mute'}/></button>
         <button className="icon-button" title="Comment jouer" aria-label="Comment jouer" onClick={() => setModal('help')}><Icon name="help"/></button>

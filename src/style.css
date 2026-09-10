@@ -121,6 +121,13 @@
   .rule-summary{margin-top:0;gap:7px}
   .rule-summary strong{font-size:9px;line-height:1.4}
   .rule-summary small{margin-top:2px}
+  /* The scrim darkens the board behind the chrome. Its third gradient veiled the
+   * left column, which no longer exists here: with --safe-left at 20px its
+   * transparent stop lands behind the 220px one, so CSS clamps it forward and
+   * paints a hard edge down the middle of the board. Keep only top and bottom. */
+  .chrome-scrim{background:
+    linear-gradient(180deg,#0a1a20e6,#0a1a20cc 112px,#0a1a2070 166px,transparent var(--safe-top)),
+    linear-gradient(0deg,#091820e6,#0918208c 78px,transparent var(--safe-bottom))}
   /* Pointer-only guidance: a phone has no hover and no wheel. */
   .world-caption{display:none}
   .world-topline{font-size:7px}

@@ -175,6 +175,8 @@ Chaque monde possède son décor 3D : végétation et ruines dans la jungle ; co
 python -m unittest discover -s backend -v
 node --test tests/motion.test.js tests/score.test.js tests/cosmetics.test.js
 node tests/props.check.mjs
+node tests/pets.check.mjs
+node tests/layout.check.mjs
 npm run build
 ```
 
