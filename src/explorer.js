@@ -233,7 +233,7 @@ export function createExplorer({ THREE, style, effectWorld=null, portalMount=nul
     const previousStep = Math.floor(stride / Math.PI);
     const nextStride = stride + advance;
     const nextStep = Math.floor(nextStride / Math.PI);
-    const footfall = active && movement > 0.1 && advance > 0 && nextStep > previousStep;
+    const footfall = active && !state.sliding && movement > 0.1 && advance > 0 && nextStep > previousStep;
     const foot = nextStep % 2 === 0 ? 'left' : 'right';
     stride = nextStride % fullTurn;
     const phase = Math.cos(stride);
@@ -258,6 +258,13 @@ export function createExplorer({ THREE, style, effectWorld=null, portalMount=nul
     rightArm.shoulder.rotation.x = -1.02 - phase * 0.11 * movement;
     rightArm.shoulder.rotation.z = 0.34;
     rightArm.elbow.rotation.x = -0.48 + phase * 0.075 * movement;
+    if(state.sliding) {
+      // Planted feet and a balancing arm distinguish gliding from running.
+      placeLeg(leftLeg,.18);placeLeg(rightLeg,.68);
+      torso.rotation.x=-.10;torso.rotation.z=Math.sin(time*3)*.028;
+      leftArm.shoulder.rotation.x=-.23;leftArm.shoulder.rotation.z=-.55;
+      rightArm.shoulder.rotation.z=.55;
+    }
     // Whatever is equipped stays upright in the fist as the arm swings.
     lightSlot.rotation.x = -(rightArm.shoulder.rotation.x + rightArm.elbow.rotation.x) + Math.sin(time * 2.4) * 0.025;
     lightSlot.rotation.z = -rightArm.shoulder.rotation.z - 0.05 + secondary * 0.035 * movement;
@@ -295,7 +302,7 @@ export function createExplorer({ THREE, style, effectWorld=null, portalMount=nul
       home[2] - petLag * .34 + Math.sin(time * .9) * .02 * (1 - movement));
     petAnchor.rotation.y = Math.sin(time * .5) * .16 * (1 - movement) - petLag * .1;
     petAnchor.rotation.z = petSpec.ground ? 0 : Math.sin(time * 1.2) * .05;
-    worn.pet?.animate?.(time, { moving: movement > .12, speed: movement, footfall, dt: delta });
+    worn.pet?.animate?.(time, { moving: movement > .12, speed: movement, footfall, dt: delta, danger: state.danger, interest: state.interest, look: state.look });
     worn.aura?.animate?.(time);
     worn.portal?.animate?.(time);
     if(effectWorld){root.getWorldPosition(effectPosition);effectWorld.worldToLocal(effectPosition);}else effectPosition.set(0,0,0);
@@ -312,6 +319,7 @@ export function createExplorer({ THREE, style, effectWorld=null, portalMount=nul
   return {
     root,
     update,
+    react(kind) { if (!disposed) worn.pet?.spec?.react?.(kind); },
     /** Swap the equipped cosmetics without touching the rig or its animation. */
     setStyle(next) {
       if (disposed) return;

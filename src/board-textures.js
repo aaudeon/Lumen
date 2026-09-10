@@ -66,6 +66,24 @@ export function createBoardTextures(THREE) {
         if(part === 'edge') for(let x=8;x<256;x+=48) line('#b4d6c67a',4,[[x,48],[x+26,48],[x+26,110],[x+8,110],[x+8,83]]);
         else {line('#b8a16e',4,[[0,10],[256,10]]);line('#b8a16e',4,[[0,246],[256,246]]);}
       }
+    } else if (kind === 'boreal') {
+      ctx.fillStyle=part==='path' ? '#ddd5bb' : part==='edge' ? '#557e9b' : ['#acc7d5','#c0d6dc','#93b4cc'][variant];
+      ctx.fillRect(0,0,256,256);
+      for(let i=0;i<14;i++) {
+        const x=random(seed+i)*256,y=random(seed+i+32)*256;
+        polygon(part==='path'?'#f7edd53a':'#eafdff36',[[x,y],[x+72,y-22],[x+52,y+36],[x-17,y+45]]);
+      }
+      if(part!=='path') {
+        for(let i=0;i<6;i++) {
+          const x=16+random(seed+i+80)*220;
+          line('#d9f5fa83',2,[[x,0],[x-18,58],[x+13,127],[x-6,256]]);
+        }
+        // Wind-packed snow rims leave the playable inset readable.
+        polygon('#eff7ef',[[0,0],[256,0],[256,18],[191,29],[148,15],[67,30],[0,21]]);
+        polygon('#dcebea',[[0,233],[71,241],[136,230],[205,242],[256,229],[256,256],[0,256]]);
+      } else {
+        for(let x=22;x<256;x+=43) {line('#84745970',3,[[x,4],[x-6,20],[x+8,32]]);line('#fff4d566',2,[[x,248],[x-6,232]]);}
+      }
     } else {
       ctx.fillStyle = part === 'path' ? '#aba4a2' : part === 'edge' ? '#353440' : ['#595865','#4a4a57','#69616a'][variant];
       ctx.fillRect(0,0,256,256);

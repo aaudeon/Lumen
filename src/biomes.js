@@ -1,5 +1,15 @@
-/** Scene palettes and compact, self-owned scenery for the expedition's three worlds. */
+import { buildBorealEnvironment } from './boreal-environment.js';
+/** Scene palettes and self-owned scenery for the expedition's worlds. */
 export const BIOME_PALETTES = {
+  boreal: {
+    fog:0x24354f,fogDensity:.024,sky:0xbbdaeb,ground:0x26374c,
+    sun:0xf4e9d5,sunPower:3.3,rimLight:0x8bebd1,ambient:1.1,
+    rock:0x69879c,base:0xa5c5d5,rim:0xe5e8cf,dark:0x38516a,
+    tile:0xe4edf0,edge:0x99bfcd,active:0xf2f5e8,hover:0xffefd1,occupied:0xf5e4b6,
+    path:0xe5d6b7,connected:0xb2f4de,trace:0xa7bbce,traceGlow:0x466c83,
+    connectedGlow:0x60cfb7,highlight:0x243d57,gold:0xf3d596,goldGlow:0xa9894d,
+    portal:0xa2f8df,motes:0xd9f5ff,shaft:0xb7dce9,
+  },
   jungle: {
     fog: 0x193b2d, fogDensity: 0.026, sky: 0x9fc6c0, ground: 0x12271b,
     sun: 0xffd593, sunPower: 4.1, rimLight: 0x78b6b1, ambient: 0.85,
@@ -38,6 +48,7 @@ export function createBiomeEnvironment({ THREE, world, maps = {}, boardTextures 
   let disposed = false;
 
   function build(kind) {
+    if(kind==='boreal') {const value=buildBorealEnvironment(THREE,root);variants.set(kind,value);return value;}
     const group = new THREE.Group();
     group.name = `${kind}-environment`;
     root.add(group);
@@ -219,7 +230,7 @@ export function createBiomeEnvironment({ THREE, world, maps = {}, boardTextures 
   return {
     setBiome(kind) {
       if (disposed) return;
-      active = kind === 'atlantis' || kind === 'volcano' ? kind : null;
+      active = ['atlantis','volcano','boreal'].includes(kind) ? kind : null;
       if (active && !variants.has(active)) build(active);
       variants.forEach((value, name) => { value.group.visible = name === active; });
     },

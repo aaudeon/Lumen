@@ -69,6 +69,7 @@ export default function build(tools, root, palette) {
   let perk = 0;
   let blink = 1.2;
   return {
+    expression: { head, ears, tail: tailBase },
     ground: true,
     home: [-.62, 0, -.14],
     animate(time, { speed = 0, footfall = false, dt = .016 } = {}) {

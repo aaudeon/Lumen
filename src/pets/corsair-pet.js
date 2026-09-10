@@ -77,6 +77,7 @@ export default function build(tools, root, palette) {
   let drive = 0;
   let blink = 2.6;
   return {
+    expression: { head: mantle },
     ground: false,
     home: [-.62, 0, -.14],
     scale: 1.1,

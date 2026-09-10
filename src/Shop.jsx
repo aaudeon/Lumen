@@ -21,7 +21,7 @@ const ensemble = collection => Object.fromEntries(Object.values(ITEMS).filter(it
 const wornPiece = equipped => (SLOTS.map(slot => ITEMS[equipped[slot]]).find(piece => piece?.price > 0)
   || ITEMS[equipped.hat] || ITEMS[DEFAULT_LOOK.hat]).id;
 
-function ExplorerStage({ look, slot, walking, biome }) {
+function ExplorerStage({ look, slot, walking, biome, reaction }) {
   const host = useRef(null), view = useRef(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -32,6 +32,7 @@ function ExplorerStage({ look, slot, walking, biome }) {
   useEffect(() => { view.current?.setStyle(look); }, [look]);
   useEffect(() => { view.current?.focusSlot(slot); }, [slot]);
   useEffect(() => { view.current?.setWalking(walking); }, [walking]);
+  useEffect(() => { if (reaction) view.current?.react(reaction.kind); }, [reaction]);
   return <div className="atelier-stage" ref={host} aria-label="Aperçu animé de votre tenue. Faites glisser pour tourner.">{failed && <p>L’aperçu 3D est indisponible sur cet appareil. Les objets restent consultables et équipables.</p>}</div>;
 }
 
@@ -47,6 +48,7 @@ export default function Shop({ wardrobe, credits, progress, biome, onBuy, onEqui
   // The changing room opens on the outfit you are wearing. Nothing is tried on until you
   // ask for it, and a trial is never saved.
   const [trial, setTrial] = useState({});
+  const [reaction, setReaction] = useState(null);
   const [walking, setWalking] = useState(true), [detail, setDetail] = useState(false);
   const [note, setNote] = useState(''), [thumbnails, setThumbnails] = useState({});
   const dialog = useRef(null), close = useRef(null);
@@ -84,6 +86,7 @@ export default function Shop({ wardrobe, credits, progress, biome, onBuy, onEqui
   }, []);
 
   function tryItem(piece) {
+    setReaction(null);
     setSelected(piece.id);
     setTrial(previous => ({ ...previous, [piece.slot]: piece.id }));
     setNote('');
@@ -102,6 +105,10 @@ export default function Shop({ wardrobe, credits, progress, biome, onBuy, onEqui
     const first=Object.values(ITEMS).find(piece=>piece.family===id);
     if(first)tryItem(first);
   }
+  function showReaction(kind) {
+    tryItem(item); setDetail(true); setWalking(false);
+    setReaction({ kind });
+  }
   function resetFilters() {
     setCollection('all'); setSlot('all'); setRarity('all'); setOwnership('all'); setQuery(''); setFreshOnly(false);
     // Clearing filters inside the menagerie keeps you in the menagerie.
@@ -118,7 +125,7 @@ export default function Shop({ wardrobe, credits, progress, biome, onBuy, onEqui
   return <div className="atelier-backdrop" onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
     <section className={`atelier ${bestiary ? 'atelier-menagerie' : ''}`} role="dialog" aria-modal="true" aria-labelledby="atelier-title" ref={dialog} style={{ '--collection': family.color || '#dfc88f' }}>
       <header className="atelier-header">
-        <div><p className="atelier-eyebrow">LA BOUTIQUE DE L’EXPÉDITION</p><h2 id="atelier-title">{bestiary ? <>La ménagerie<span>.</span></> : <>Le cabinet des merveilles<span>.</span></>}</h2><p>{bestiary ? `${petCount} familiers · ${PET_FAMILIES.length} familles · chacun sa démarche` : `${Object.keys(ITEMS).length} pièces · ${COLLECTIONS.length} collections · essayage gratuit`}</p></div>
+        <div><p className="atelier-eyebrow">LA BOUTIQUE DE L’EXPÉDITION</p><h2 id="atelier-title">{bestiary ? <>La ménagerie<span>.</span></> : <>Le cabinet des merveilles<span>.</span></>}</h2><p>{bestiary ? `${petCount} familiers · ${PET_FAMILIES.length} familles · chacun son caractère` : `${Object.keys(ITEMS).length} pièces · ${COLLECTIONS.length} collections · essayage gratuit`}</p></div>
         <div className="atelier-purse"><small>CRÉDITS DISPONIBLES</small><strong>✦ {points(credits)}</strong><span>Portefeuille : {points(walletTotal(progress))} pts</span></div>
         <button ref={close} className="atelier-close" onClick={onClose} aria-label="Fermer la boutique">×</button>
       </header>
@@ -143,8 +150,12 @@ export default function Shop({ wardrobe, credits, progress, biome, onBuy, onEqui
         <section className="atelier-preview" aria-label="Cabine d’essayage">
           <div className="atelier-stage-heading"><span>{isTrying ? 'ESSAYAGE LIBRE' : 'VOTRE TENUE'}</span><button onClick={() => { setTrial({}); setDetail(false); setNote('Votre tenue équipée a été restaurée dans l’aperçu.'); }}>Ma tenue ↺</button></div>
           <div className="atelier-halo" aria-hidden="true"/>
-          <ExplorerStage look={look} slot={detail ? item.slot : null} walking={walking} biome={biome}/>
+          <ExplorerStage look={look} slot={detail ? item.slot : null} walking={walking} biome={biome} reaction={reaction}/>
           <div className="atelier-stage-controls"><button aria-label={walking ? 'Arrêter la marche' : 'Faire marcher l’aventurier'} aria-pressed={walking} onClick={() => setWalking(!walking)}>{walking ? 'Ⅱ Pause' : '▷ Marcher'}</button><button aria-label={detail ? 'Voir la tenue complète' : 'Voir le détail de la pièce'} aria-pressed={detail} onClick={() => setDetail(!detail)}>{detail ? '↗ Ensemble' : '⌕ Détail'}</button></div>
+          {bestiary && item.slot === 'pet' && item.price > 0 && <div className="atelier-reactions" role="group" aria-label="Faire réagir le familier">
+            <span>UN PEU DE CARACTÈRE</span>
+            <div>{[['curious', '✧ Curiosité'], ['danger', '! Danger'], ['victory', '♡ Joie']].map(([kind, label]) => <button key={kind} onClick={() => showReaction(kind)}>{label}</button>)}</div>
+          </div>}
           <p className="atelier-drag">{bestiary ? 'Faites glisser pour tourner · Pause montre son comportement au repos' : 'Faites glisser pour tourner · les essais ne sont pas sauvegardés'}</p>
           <div className="atelier-selection">
             <p className="atelier-family">{family.symbol} {family.name} <span style={{ color: RARITIES[item.rarity].color }}>{RARITIES[item.rarity].name}</span></p>
@@ -152,7 +163,7 @@ export default function Shop({ wardrobe, credits, progress, biome, onBuy, onEqui
             <div className="atelier-selected-price"><span>{slotName[item.slot]}</span><strong>{held ? worn ? 'Déjà équipé' : 'Dans votre collection' : `✦ ${points(item.price)}`}</strong></div>
             <button className="atelier-buy" disabled={worn || !held && credits < item.price} onClick={acquire}>{worn ? 'Équipé' : held ? 'Équiper cette pièce' : credits < item.price ? `Il manque ${points(item.price - credits)} crédits` : `Acheter et équiper · ${points(item.price)}`}</button>
             {item.fresh && item.slot !== 'pet' && <button className="atelier-ensemble" onClick={() => { setTrial(previous => ({ ...previous, ...ensemble(item.collection) })); setDetail(false); setNote(`Collection ${family.name} à l’essai. Aucun achat effectué.`); }}>Essayer toute la collection <span>→</span></button>}
-            <p className="atelier-note" role="status">{note || (bestiary ? 'Un compagnon animé, en marche comme au repos. Essayage gratuit.' : 'Associez les collections pour inventer votre propre aventurier.')}</p>
+            <p className="atelier-note" role="status">{note || (bestiary ? 'Il réagit aux trésors, aux dangers et à vos victoires. Essayage gratuit.' : 'Associez les collections pour inventer votre propre aventurier.')}</p>
           </div>
         </section>
 

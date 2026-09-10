@@ -130,6 +130,8 @@ export function createGameScene(host, callbacks) {
   let winTime = -100;
   let pendingSettle = false;
   let pendingVictory = false;
+  let pendingTreasure = false;
+  const heroWorld = new THREE.Vector3();
   const materials = new Set();
   const geometries = new Set();
   const pixelTextures = createPixelTextures(THREE);
@@ -475,7 +477,7 @@ export function createGameScene(host, callbacks) {
       group.add(arrow);
       return arrow;
     });
-    const hazard = createTileHazard({ THREE, tile });
+    const hazard = createTileHazard({ THREE, tile, biome:boardProfile.biome });
     group.add(hazard.root);
     group.scale.set(boardProfile.sx, 1, boardProfile.sz);
     group.position.copy(cellPosition(index));
@@ -532,6 +534,8 @@ export function createGameScene(host, callbacks) {
         gone.marker.removeFromParent();
       }
       collapseEffects.clear();
+      pendingTreasure = false;
+      explorer.react('reset');
       currentLevel = next.id;
       hero.position.copy(heroPosition(next.hero));
       heroMotion = null;
@@ -583,6 +587,8 @@ export function createGameScene(host, callbacks) {
         } else removeTile(id, data);
       }
     }
+    if (previous?.id === next.id && next.relic?.taken && !previous?.relic?.taken) pendingTreasure = true;
+    if (!next.relic?.taken) pendingTreasure = false;
     syncGuardians();
     syncFeatures();
     if (next.won && !previous?.won) pendingVictory = true;
@@ -616,7 +622,7 @@ export function createGameScene(host, callbacks) {
     previewMaterial.color.set(color.connected);
     previewRingMaterial.color.set(color.connected);
     blankMat.color.set(color.dark);
-    dustMaterial.color.set(kind === 'atlantis' ? 0x92c2c7 : kind === 'volcano' ? 0x967b73 : 0xab9d69);
+    dustMaterial.color.set(kind==='boreal' ? 0xd5f1ff : kind === 'atlantis' ? 0x92c2c7 : kind === 'volcano' ? 0x967b73 : 0xab9d69);
   }
   function setBoardProfile(profile) {
     boardProfile = profile;
@@ -876,7 +882,6 @@ export function createGameScene(host, callbacks) {
     const cameraMoved = controls.update();
     let tilesMoving = false;
     for (const data of tiles.values()) {
-      data.hazard.update(time, { urgent: data.collapseDistance !== null });
       if (data.fallStartedAt !== null) { tilesMoving = true; continue; }
       const lifted = data.target.clone();
       if (data.collapseDistance === null && data.index === hovered && state?.slidable.includes(data.index) && mode === 'slide') lifted.y += 0.06;
@@ -895,6 +900,13 @@ export function createGameScene(host, callbacks) {
       hero.position.set(sample.position.x, sample.position.y, sample.position.z);
       if (sample.heading !== null) heroHeading = sample.heading;
       if (sample.complete) heroMotion = null;
+    }
+    hero.getWorldPosition(heroWorld);
+    for (const data of tiles.values()) data.hazard.update(time, {
+      urgent: data.collapseDistance !== null, dt, heroPosition: state?.won ? null : heroWorld,
+    });
+    if (pendingTreasure && (!heroMotion || hero.position.distanceTo(cellPosition(state.relic.index)) < .55)) {
+      pendingTreasure = false; explorer.react('treasure');
     }
     let blanksChanged = false;
     for (const [id, data] of tiles) {
@@ -921,7 +933,7 @@ export function createGameScene(host, callbacks) {
         const towards = guard.target.clone().sub(guard.actor.root.position);
         guard.actor.face(Math.atan2(towards.x, towards.z));
       }
-      guard.actor.update(time, dt, step > .02);
+      guard.actor.update(time, dt, step > .02, { heroPosition: state?.won ? null : heroWorld });
       if (step > .01) tilesMoving = true;
       guard.marker.scale.setScalar(1 + Math.sin(time * 3.2) * .07);
     }
@@ -929,7 +941,30 @@ export function createGameScene(host, callbacks) {
     for (const item of features) item.feature.update(time);
     const turn = Math.atan2(Math.sin(heroHeading - hero.rotation.y), Math.cos(heroHeading - hero.rotation.y));
     hero.rotation.y += turn * (1 - Math.exp(-frameDelta * 16));
-    const gait = explorer.update(time, dt, { moving, distance });
+    const skating=moving && [...tiles.values()].some(data=>data.tile.hazard==='ice' &&
+      Math.abs(hero.position.x-data.group.position.x)<.67*boardProfile.sx &&
+      Math.abs(hero.position.z-data.group.position.z)<.67*boardProfile.sz);
+    const awareness = { danger: 0, interest: 0, look: 0 };
+    let nearest = Infinity;
+    function notice(position, kind) {
+      const dx = position.x - hero.position.x, dz = position.z - hero.position.z;
+      const gap = Math.hypot(dx, dz);
+      const amount = THREE.MathUtils.clamp((2.5 - gap) / 1.65, 0, 1);
+      awareness[kind] = Math.max(awareness[kind], amount);
+      if (amount > .1 && gap < nearest) {
+        nearest = gap;
+        const angle = Math.atan2(dx, dz) - hero.rotation.y;
+        awareness.look = Math.atan2(Math.sin(angle), Math.cos(angle));
+      }
+    }
+    if (!state?.won) {
+      for (const guard of guardians) notice(guard.actor.root.position, 'danger');
+      for (const data of tiles.values()) {
+        if (['crocodile', 'fragile', 'brittle'].includes(data.tile.hazard)) notice(data.group.position, 'danger');
+      }
+      if (!awareness.danger && state?.relic && !state.relic.taken) notice(cellPosition(state.relic.index), 'interest');
+    }
+    const gait = explorer.update(time, dt, { moving, distance, sliding:skating, ...awareness });
     if (gait?.footfall) {
       callbacks.onFootfall?.();
       const footSide = gait.foot === 'left' ? -.1 : .1;
@@ -954,7 +989,7 @@ export function createGameScene(host, callbacks) {
       tile.collapseDistance === null && tile.fallStartedAt === null &&
       Math.abs(tile.group.position.x - tile.target.x) + Math.abs(tile.group.position.z - tile.target.z) < 0.004)) {
       pendingSettle = false;
-      if (pendingVictory) { winTime = time; pendingVictory = false; callbacks.onVictory?.(); }
+      if (pendingVictory) { winTime = time; pendingVictory = false; pendingTreasure = false; explorer.react('victory'); callbacks.onVictory?.(); }
       updatePreview();
       callbacks.onSettled?.();
     }

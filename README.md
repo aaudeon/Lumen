@@ -1,6 +1,6 @@
 # LUMEN · Les chemins oubliés
 
-Un prototype jouable de **taquin d'aventure**, en React, Three.js et Python. Faites glisser les dalles pour guider Lumen de l'entrée à la sortie à travers **24 niveaux dans trois mondes : la jungle, l'Atlantide et le volcan**. Explorez le plateau en 3D sous tous les angles dans une ambiance d'expédition archéologique. Le décor, le personnage, les effets lumineux et les particules sont dessinés dans un canvas WebGL.
+Un prototype jouable de **taquin d'aventure**, en React, Three.js et Python. Faites glisser les dalles pour guider Lumen de l'entrée à la sortie à travers **29 niveaux dans quatre mondes : la jungle, l'Atlantide, le volcan et Boréale**. Explorez le plateau en 3D sous tous les angles dans une ambiance d'expédition archéologique. Le décor, le personnage, les effets lumineux et les particules sont dessinés dans un canvas WebGL.
 
 ## Lancer le jeu
 
@@ -30,9 +30,9 @@ python start.py --port 8766
 
 ## Comment jouer
 
-Le jeu s'ouvre sur une **carte d'expédition** : choisissez l'un des trois mondes, chacun avec sa carte distincte, ses cinq passages d'origine et ses épreuves plus récentes, puis **Explorer**, **Reprendre** ou **Rejouer**. Les passages déjà terminés portent un sceau, la barre de progression compte les niveaux explorés et le **Carnet d'expédition** rassemble vos records. Les vingt-quatre niveaux s'ouvrent **l'un après l'autre** : un cadenas marque les passages encore fermés, et terminer un niveau déverrouille le suivant. Le carnet propose aussi de **recommencer l'aventure à zéro**, ce qui efface tout ce que ce navigateur garde.
+Le jeu s'ouvre sur une **carte d'expédition** : retrouvez les quatre mondes et leurs cartes distinctes, les passages d'origine, les épreuves et les cinq sanctuaires de Boréale, puis **Explorer**, **Reprendre** ou **Rejouer**. Les passages déjà terminés portent un sceau, la barre de progression compte les niveaux explorés et le **Carnet d'expédition** rassemble vos records. Les vingt-neuf niveaux s'ouvrent **l'un après l'autre** : un cadenas marque les passages encore fermés, et terminer un niveau déverrouille le suivant. Le carnet propose aussi de **recommencer l'aventure à zéro**, ce qui efface tout ce que ce navigateur garde.
 
-Le bouton **Carte** du plateau permet de revenir à l'accueil et de reprendre la partie en cours. Le chronomètre et le rendu 3D se mettent en pause dans l'accueil. Après une victoire, poursuivez vers le niveau suivant ou retrouvez votre progression sur la carte : le niveau 10 mène au 11 en Atlantide, et le 17 au 18 dans le volcan.
+Le bouton **Carte** du plateau permet de revenir à l'accueil et de reprendre la partie en cours. Le chronomètre et le rendu 3D se mettent en pause dans l'accueil. Après une victoire, poursuivez vers le niveau suivant ou retrouvez votre progression sur la carte : le niveau 10 mène au 11 en Atlantide, le 17 au 18 dans le volcan, puis le 24 au 25 en Boréale.
 
 1. En mode **déplacer**, cliquez sur une dalle voisine d'un emplacement vide pour la faire glisser. Les flèches sur les dalles indiquent les glissades possibles, uniquement à l'horizontale ou à la verticale. Si plusieurs vides sont voisins de la même dalle, choisissez ensuite celui à utiliser sur le plateau ou avec les boutons proposés.
 2. **Une dalle occupée par Lumen est bloquée.** Son emplacement est une contrainte du puzzle : il faut parfois avancer avant de poursuivre le taquin.
@@ -88,7 +88,7 @@ Les niveaux terminés, vos records, vos points et votre garde-robe restent enreg
 
 **Faire mieux que la référence ne rapporte pas plus que l'atteindre** : il n'y a rien à optimiser au-delà de la solution d'auteur. À l'inverse, aucune part ne devient négative — une course lente et prudente garde ses 400 points de passage. Le multiplicateur va de 1 (Initiation, Découverte) à 2,5 (Légende), pour qu'un passage difficile vaille ce qu'il demande.
 
-Le **portefeuille** additionne votre **meilleure course sur chaque niveau**. Rejouer ne peut donc que l'augmenter, et refaire le premier niveau en boucle ne rapporte rien. Il s'affiche en haut de l'écran de jeu, dans l'en-tête de la carte et dans le carnet d'expédition, où chaque passage montre son propre record. Compter large : une campagne jouée sans chercher l'efficacité tourne autour de 32 000 points, une campagne parfaite avec tous les trésors autour de 48 000.
+Le **portefeuille** additionne votre **meilleure course sur chaque niveau**. Rejouer ne peut donc que l'augmenter, et refaire le premier niveau en boucle ne rapporte rien. Il s'affiche en haut de l'écran de jeu, dans l'en-tête de la carte et dans le carnet d'expédition, où chaque passage montre son propre record. Compter large : une campagne jouée sans chercher l'efficacité tourne autour de 32 000 points, le plafond théorique des 29 passages avec tous les trésors est de 62 980 points.
 
 Le barème vit dans [src/score.js](src/score.js), à l'écart de l'interface, et `tests/score.test.js` le vérifie.
 
@@ -105,7 +105,7 @@ Les **huit emplacements** sont le couvre-chef, la cape ou les ailes, la lumière
 
 Le **portefeuille reste un record qui ne baisse jamais**. Les dépenses sont conservées séparément ; le solde disponible vaut portefeuille moins dépenses. Les achats et les tenues antérieurs restent compatibles.
 
-L'économie privilégie le choix : le catalogue complet coûte **114 100 crédits**, contre un **plafond théorique de 48 440 points** pour les 24 passages et leurs trésors. Un nouvel ensemble coûte **7 300 crédits** ; ses pièces vont de 300 à 1 700 crédits. Les douze animaux supplémentaires coûtent de 1 100 à 6 200 crédits. Les prix des pièces d'origine restent inchangés. Les raretés sont fixes et tous les prix sont visibles, sans tirage au sort. Rejouer sans améliorer son meilleur score ne crée pas de nouveaux crédits.
+L'économie privilégie le choix : le catalogue complet coûte **114 100 crédits**, contre un **plafond théorique de 62 980 points** pour les 29 passages et leurs trésors. Un nouvel ensemble coûte **7 300 crédits** ; ses pièces vont de 300 à 1 700 crédits. Les douze animaux supplémentaires coûtent de 1 100 à 6 200 crédits. Les prix des pièces d'origine restent inchangés. Les raretés sont fixes et tous les prix sont visibles, sans tirage au sort. Rejouer sans améliorer son meilleur score ne crée pas de nouveaux crédits.
 
 Tout est **cosmétique**. Les familiers n'agissent pas sur les dalles, les traces s'effacent derrière les pas et la parure reste attachée à la sortie. Les lumières éclairent réellement de leur couleur. Aucun objet ne change les règles, la difficulté, les indices ou les records.
 
@@ -119,13 +119,15 @@ Ils ne flottent pas sur place : le gréement leur applique un retard de suivi �
 
 Le fonctionnement, l'économie et l'ajout de collections ou de familiers sont décrits dans [docs/boutique.md](docs/boutique.md).
 
-## Les vingt-quatre passages
+## Les vingt-neuf passages
 
-Chaque monde garde ses cinq passages d'origine, puis ses **épreuves** : des puzzles courts qui introduisent une règle, puis la combinent.
+Les trois premiers mondes gardent leurs passages d'origine et leurs **épreuves**. Boréale prolonge cette progression avec cinq passages qui introduisent la glisse puis la combinent aux mécanismes existants.
 
 - **Jungle · niveaux 1 à 10 :** Le premier passage ; Les jardins suspendus ; Le sentier des brumes ; Le temple de la canopée ; La pierre voyageuse — puis La ronde du gardien ; La sentinelle ; Le sceau du temple ; Le contrepoids ; La vigie.
 - **Atlantide · niveaux 11 à 17 :** Les portes du lagon ; La salle des marées ; Le labyrinthe de corail ; Les archives des abysses ; Le sanctuaire du trident — puis L'heure du reflux ; L'estran.
 - **Volcan · niveaux 18 à 24 :** Le seuil des cendres ; Le pont des braises ; La spirale d'obsidienne ; La forge des anciens ; Le cœur de la caldeira — puis Les premières fissures ; Le passage sacrifié.
+
+- **Boréale · niveaux 25 à 29 :** Le lac miroir ; Les aiguilles du nord ; Le refuge des veilleurs ; Le pont des séracs ; La couronne boréale. Sur la glace, Lumen doit aller tout droit sans s’arrêter. Les derniers niveaux combinent glisse, leviers, lest et effondrements. Voir [le guide de Boréale](docs/boreale.md).
 
 Chaque monde s'ouvre sur une courte scène d'arrivée, et chaque sortie de niveau est célébrée.
 
@@ -147,6 +149,18 @@ npm run dev
 Ouvrez l'adresse affichée par Vite. Pour reconstruire et jouer avec le serveur Python seul, arrêtez les deux serveurs puis utilisez `python start.py --build`.
 
 Le lanceur reconstruit aussi automatiquement le frontend lorsqu'un fichier source est plus récent que la dernière construction.
+
+### Le mode dév : tous les passages ouverts
+
+Pour essayer un monde récent sans rejouer la campagne, ajoutez **`?dev`** à l'adresse :
+
+```
+http://127.0.0.1:8765/?dev
+```
+
+Tous les cadenas s'effacent, la campagne entière devient jouable, et un badge **MODE DÉV** apparaît en haut de l'écran pour qu'une session de test ne passe jamais pour une vraie partie. Le mode tient pour l'onglet : recharger le conserve, fermer l'onglet y met fin. Cliquer le badge, ou charger `?dev=0`, en sort.
+
+Il ne touche à **rien** de ce qui est sauvegardé : progression, records, reliques et portefeuille restent ceux de vos vraies parties, et la carte s'ouvre toujours sur votre frontière réelle, pas sur le dernier niveau. Un passage terminé en mode dév compte comme terminé — c'est précisément ce qui le rend utile. Le déverrouillage étant une règle du client, le mode dév se contente de ne pas l'appliquer ([src/dev-mode.js](src/dev-mode.js) et [src/campaign.js](src/campaign.js)).
 
 ## En cas de problème
 
@@ -180,4 +194,4 @@ node tests/layout.check.mjs
 npm run build
 ```
 
-Les tests Python couvrent les règles, les solutions des vingt-quatre niveaux, l'unicité des plateaux, les trois mondes et l'API. Ils vérifient aussi les crocodiles fixes et en maraude, les courants, la marée, les leviers et sceaux à poids, les effondrements en chaîne, le caractère facultatif des reliques, les déplacements avec plusieurs vides et leur annulation. Les tests Node de `tests/score.test.js` vérifient le barème, ses bornes et la somme du portefeuille ; ceux de `tests/cosmetics.test.js` couvrent le catalogue et les achats ; ceux de `tests/motion.test.js` vérifient les virages, le trajet inverse, les courtes marches, les aperçus sûrs et le choix d'un arrêt après une traversée fragile. La dernière commande construit le frontend dans `dist/`.
+Les tests Python couvrent les règles, les solutions des vingt-neuf niveaux, l'unicité des plateaux, les quatre mondes et l'API. Ils vérifient aussi les crocodiles fixes et en maraude, les courants, la marée, les leviers et sceaux à poids, les effondrements en chaîne, le caractère facultatif des reliques, les déplacements avec plusieurs vides et leur annulation. Les tests Node de `tests/score.test.js` vérifient le barème, ses bornes et la somme du portefeuille ; ceux de `tests/cosmetics.test.js` couvrent le catalogue et les achats ; ceux de `tests/motion.test.js` vérifient les virages, le trajet inverse, les courtes marches, les aperçus sûrs et le choix d'un arrêt après une traversée fragile. La dernière commande construit le frontend dans `dist/`.

@@ -123,6 +123,7 @@ export default function build(tools, root, palette) {
   // The stretch runs on the creature's own clock, so a rewound time never skips it.
   let stretchAt = 1;
   return {
+    expression: { head, jaw, wings, tail },
     ground: true,
     home: [-.62, 0, -.15],
     scale: 1.1,

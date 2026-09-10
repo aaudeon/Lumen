@@ -34,6 +34,10 @@ class Tile:
 
 
 MECHANICS = {
+    "ice": ("Gardez votre élan", "Sur la glace bleue, Lumen continue tout droit : impossible de tourner ou de s’arrêter. Placez une dalle stable pour prendre un virage et préparez tout le trajet avant de partir."),
+    "ice_gate": ("Les refuges scellés", "Glissez tout droit sur la glace et arrêtez-vous sur chacun des leviers pour ouvrir la porte. Un carrefour gelé ne permet pas de tourner : préparez vos appuis."),
+    "ice_chain": ("La traversée des séracs", "La glace impose la ligne droite ; les ponts fissurés tombent derrière vous. Utilisez leurs vides pour déplacer le lest sur son sceau, puis rejoignez le levier."),
+    "ice_master": ("Le serment de Boréale", "Deux leviers et une pierre de lest gardent la sortie. Préparez vos lignes de glisse, traversez le pont fragile, puis utilisez le vide libéré pour activer le sceau."),
     "fragile": ("Traversée éclair", "Rejoignez une pierre stable en une seule marche : les dalles fissurées s’effondrent derrière vous. Utilisez ces nouveaux vides pour déplacer les autres pierres."),
     "current": ("Courants à sens unique", "Sur une dalle à courant, Lumen peut seulement repartir dans le sens de la flèche. Placez ces pierres pour former un trajet dans le bon sens."),
     "crocodile": ("Gardiens de la jungle", "Les crocodiles bloquent le passage. Déplacez leurs dalles pour dégager votre route : ils restent sur leur pierre."),
@@ -76,6 +80,7 @@ class Level:
             ("tide", self.tide), ("chain", "brittle" in hazards),
             ("fragile", "fragile" in hazards), ("current", "current" in hazards),
             ("crocodile", "crocodile" in hazards),
+            ("ice", "ice" in hazards),
             ("relais", self.id == "relais")) if present), "default")
         title, text = MECHANICS[key]
         return {"key": key, "title": title, "text": text}
@@ -256,7 +261,7 @@ LEVELS = (
 LEVEL_BY_ID = {level.id: level for level in LEVELS}
 
 
-def connected_neighbors(board, position):
+def connected_neighbors(board, position, heading=None):
     """Directed edges: guardians and closed gates block entry, currents constrain departure."""
     tiles = board.tiles
     if position == OUTSIDE:
@@ -270,6 +275,8 @@ def connected_neighbors(board, position):
         return
     # Departure is never blocked: a gate closing behind Lumen must not strand him.
     allowed = (board.departure(tile),) if tile.hazard == "current" else tile.ports
+    if tile.hazard == "ice":
+        allowed = (heading,) if heading else ()
     if position == 0 and "W" in tile.ports and "W" in allowed:
         yield OUTSIDE
     if position == 15 and "E" in tile.ports and "E" in allowed:
@@ -282,22 +289,32 @@ def connected_neighbors(board, position):
 
 
 def paths_from(board, hero):
-    """Exact shortest routes to stable stopping places, through fragile cells.
+    """Stable destinations; ice retains the incoming heading at intersections.
 
-    Every route is simple, so a fragile cell is never reused after collapsing.
-    The client receives these routes rather than approximating directed paths.
+    Separate visits to the same ice tile from different sides must remain
+    distinct. Routes never reuse a tile that would already have collapsed.
     """
     paths = {hero: [hero]}
-    queue = deque([hero])
+    queue = deque([(hero, None, [hero])])
+    seen = {(hero, None)}
     while queue:
-        at = queue.popleft()
-        for destination in connected_neighbors(board, at):
-            if destination not in paths:
-                paths[destination] = paths[at] + [destination]
-                queue.append(destination)
-    return {at: path for at, path in paths.items()
-            if at in {OUTSIDE, FINISH} or at == hero
-            or board.tiles[at].hazard != "fragile"}
+        at, heading, path = queue.popleft()
+        for destination in connected_neighbors(board, at, heading):
+            if destination in path:
+                continue
+            icy = 0 <= destination < FINISH and board.tiles[destination].hazard == "ice"
+            incoming = ({1: "E", -1: "W", SIZE: "S", -SIZE: "N"}[destination - at]
+                        if icy else None)
+            key = (destination, incoming)
+            if key in seen:
+                continue
+            seen.add(key)
+            route = path + [destination]
+            if (destination in {OUTSIDE, FINISH}
+                    or board.tiles[destination].hazard not in {"fragile", "ice"}):
+                paths.setdefault(destination, route)
+            queue.append((destination, incoming, route))
+    return paths
 
 
 def walk_impact(board, path):
@@ -577,6 +594,8 @@ class Game:
                 raise GameError("Cette dalle dort sous l’eau. Faites descendre la marée pour la découvrir.")
             if hazard == "fragile":
                 raise GameError("Cette dalle va s’effondrer : choisissez une pierre stable au-delà pour la traverser sans arrêt.")
+            if hazard == "ice":
+                raise GameError("Impossible de s’arrêter sur la glace : choisissez une dalle stable dans le prolongement, sans virage.")
         next_board, path, report = walk_result(board, self.hero, index, paths)
         had_relic = self.relic
         self._save(path)
@@ -869,7 +888,7 @@ def with_relics(level):
 def ordered_campaign(base, trials):
     """Each world keeps its five original passages, then its newer trials."""
     result = []
-    for biome in ("jungle", "atlantis", "volcano"):
+    for biome in ("jungle", "atlantis", "volcano", "boreal"):
         family = ([level for level in base if level.biome == biome]
                   + [level for level in trials if level.biome == biome])
         for position, level in enumerate(family, 1):
@@ -878,7 +897,12 @@ def ordered_campaign(base, trials):
     return tuple(replace(level, chapter=index) for index, level in enumerate(result, 1))
 
 
-LEVELS = ordered_campaign(hazard_campaign(LEVELS), TRIALS)
+try:
+    from .boreal import build_boreal_levels
+except ImportError:
+    from boreal import build_boreal_levels
+
+LEVELS = ordered_campaign(hazard_campaign(LEVELS), TRIALS + build_boreal_levels(trial, scramble, replace, FINISH))
 LEVEL_BY_ID = {level.id: level for level in LEVELS}
 
 WITNESSES = {level.id: witness_cache(level) for level in LEVELS}

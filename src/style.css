@@ -148,3 +148,10 @@
 .chapter-tab.locked>span{color:#8c9d99;border-color:transparent}
 .level-choice.locked{opacity:.5;border-style:dashed}
 .level-choice.locked .level-numeral,.level-choice.locked svg{color:#8fa699}
+
+/* Dev mode badge: a session with every padlock lifted must never pass for a real one. */
+.home-header-actions .dev-badge,.top-actions .dev-badge{display:flex;align-items:center;gap:7px;width:auto;height:auto;padding:7px 12px;border:1px solid #d9bd8055;border-radius:20px;background:#d9bd800f;font-size:8px;letter-spacing:1.6px;color:#e8d9a4;white-space:nowrap}
+.dev-badge>i{width:5px;height:5px;border-radius:50%;background:#ffcf6e;box-shadow:0 0 8px #ffcf6e}
+.dev-badge>span{font-size:7px;letter-spacing:1px;color:#a9b8a6}
+.dev-badge:hover{border-color:#e6cd94aa}
+@media(max-width:700px){.dev-badge>span{display:none}.home-header-actions .dev-badge,.top-actions .dev-badge{padding:6px 9px;letter-spacing:1.2px}}

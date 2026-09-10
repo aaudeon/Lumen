@@ -96,6 +96,7 @@ export default function build(tools, root, palette) {
   let onde = 0;
   let clignement = 3.2;
   return {
+    expression: { head: tete, neck: cou, legs: pattes, tail: queue },
     ground: true,
     home: [-.62, 0, -.22],
     scale: 1.3,

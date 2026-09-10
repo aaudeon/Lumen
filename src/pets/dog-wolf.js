@@ -94,6 +94,7 @@ export default function build(tools, root, palette) {
   // The sniff is scheduled on the creature's own clock so it survives a rewound time.
   let clock = 0;
   return {
+    expression: { head, ears, tail },
     ground: true,
     home: [-.62, 0, -.19],
     scale: 1.08,

@@ -94,6 +94,7 @@ export default function build(tools, root, palette) {
   let creep = 0;
   let prowl = 0;
   return {
+    expression: { head, ears, tail },
     ground: true,
     home: [-.62, 0, -.2],
     scale: 1.05,

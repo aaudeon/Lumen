@@ -22,6 +22,7 @@ import dragonPet from './dragon-pet.js';
 import clockworkPet from './clockwork-pet.js';
 import corsairPet from './corsair-pet.js';
 import arcadePet from './arcade-pet.js';
+import { expressiveCreature } from './expressions.js';
 
 export const PETS = {
   'cat-tabby': catTabby,
@@ -45,6 +46,11 @@ export const PETS = {
 };
 
 export function buildCreature(tools, root, palette) {
-  const build = PETS[palette?.creature || palette?.id];
-  return build ? build(tools, root, palette) : null;
+  const id = palette?.creature || palette?.id;
+  const build = PETS[id];
+  if (!build) return null;
+  const stage = new tools.THREE.Group(), creature = new tools.THREE.Group();
+  stage.name = 'pet-reaction';
+  root.add(stage); stage.add(creature);
+  return expressiveCreature(tools.THREE, stage, creature, build(tools, creature, palette), id);
 }

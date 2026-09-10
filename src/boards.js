@@ -1,5 +1,11 @@
+import { buildBorealBoard, buildBorealTile } from './boreal-board.js';
 /** Physical proportions and architectural identities; puzzle connectivity remains orthogonal. */
 const profiles = {
+  banquise: ['boreal','Terrasses du lac miroir','lake',1.18,.94,0],
+  aiguilles: ['boreal','Défilé des aiguilles','needles',.93,1.18,1],
+  refuge: ['boreal','Parvis des veilleurs','refuge',1.12,1.03,2],
+  seracs: ['boreal','Crevasse des séracs','seracs',.98,1.16,3],
+  aurore: ['boreal','Couronne des aurores','crown',1.19,1.08,4],
   aube: ['jungle','Cour des racines','terrace',1,1,0],
   jardins: ['jungle','Jardins en terrasses','terrace',1.18,.91,1],
   brumes: ['jungle','Ruines des lianes','roots',.93,1.14,2],
@@ -48,7 +54,7 @@ function workshop(THREE, parent) {
     item.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),delta.normalize());return item;
   }
   let disposed=false;
-  return {root,geo,box,rock,column,mat,mesh,beam,animations,
+  return {THREE,root,geo,box,rock,column,mat,mesh,beam,animations,
     update(time){animations.forEach(update=>update(time));},
     dispose(){if(disposed)return;disposed=true;root.removeFromParent();geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());root.clear();},
   };
@@ -72,7 +78,9 @@ export function createBoardStructure({THREE,world,textures}) {
       const accent=mat(biome==='jungle'?0x688446:biome==='atlantis'?0x64cdd4:0xdc8245,
         {emissive:biome==='volcano'?0x8a250b:0x10352c,emissiveIntensity:.18});
 
-      if(biome==='jungle') {
+      if(biome==='boreal') {
+        buildBorealBoard(kit,profile,maps);
+      } else if(biome==='jungle') {
         // Offset retaining walls and hanging roots replace the perfectly square plinth.
         for(let row=0;row<4;row++) {
           const z=(row-1.5)*1.34,overhang=(row+variant)%3*.15;
@@ -205,6 +213,7 @@ export function createTileScenery({THREE,tile,profile}) {
   const solid=tile.ports.length===0;
   const {biome}=profile;
   if(tile.hazard) return kit;
+  if(biome==='boreal') {buildBorealTile(kit,solid,v);return kit;}
   if(biome==='jungle') {
     const leaf=mat(v===0?0x809943:0x4f773d),stone=mat(0x8a9d73),earth=mat(0x5e6138);
     // Three different ruins, so a row of blank stones never reads as a row of faces.

@@ -125,3 +125,15 @@ remplacer un passage existant.
 - [x] Compatibilité des anciens achats et portefeuille conservé ; économie fondée sur le choix des pièces.
 
 Bilan et guide d'extension : [docs/boutique.md](docs/boutique.md).
+
+
+## Boréale — monde IV après le volcan
+
+- [x] Cinq nouveaux passages, niveaux 25 à 29, avec déverrouillage séquentiel.
+- [x] Glace : élan tout droit et arrêt obligatoire sur un appui stable.
+- [x] Combinaisons progressives avec leviers, lest et ponts sacrifiés.
+- [x] Neige, aurores, ruines nordiques et cinq architectures distinctes.
+- [x] Posture de glissade, indices et aperçu des arrêts sûrs.
+- [x] Relique facultative : la Boussole polaire.
+
+Détails : [docs/boreale.md](docs/boreale.md).

@@ -76,6 +76,7 @@ export default function build(tools, root, palette) {
   let spin = 0;
   let lean = 0;
   return {
+    expression: { orbits: belts.map(belt => belt.spinner) },
     ground: false,
     home: [-.62, 0, -.12],
     scale: 1,

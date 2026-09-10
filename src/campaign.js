@@ -17,6 +17,12 @@ export const BIOMES = [
     description: 'Au-dessus des coulées de lave, retrouvez les cinq chemins taillés dans l’obsidienne.',
     arrival: 'Entrer dans le volcan', symbol: '△',
   },
+  {
+    id:'boreal',name:'Boréale',world:'IV',title:'Les sanctuaires du grand nord',
+    headline:'Au-delà des braises,',emphasis:'l’éclat du grand nord.',
+    description:'Cinq épreuves sous les aurores. Apprivoisez la glace, préparez vos appuis et réveillez les refuges scellés.',
+    arrival:'Traverser la banquise',symbol:'❄',
+  },
 ];
 
 export const getBiome = id => BIOMES.find(biome => biome.id === id) || BIOMES[0];
@@ -26,16 +32,20 @@ export const getBiome = id => BIOMES.find(biome => biome.id === id) || BIOMES[0]
  * `levels` arrives from the server already in chapter order, so the run of
  * finished passages at the front of that list is exactly what has been earned.
  * The passage right after that run is the frontier — open, but not yet done.
+ *
+ * `allOpen` is the dev-mode override: the chain still describes the campaign, it is
+ * simply not enforced. See `src/dev-mode.js`.
  */
-export function openCount(levels = [], progress = {}) {
+export function openCount(levels = [], progress = {}, allOpen = false) {
+  if (allOpen) return levels.length;
   let open = 0;
   while (open < levels.length && progress?.[levels[open].id]?.completed) open += 1;
   return Math.min(open + 1, levels.length);
 }
 
-export function isOpen(levels, progress, levelId) {
+export function isOpen(levels, progress, levelId, allOpen = false) {
   const index = (levels || []).findIndex(level => level.id === levelId);
-  return index >= 0 && index < openCount(levels, progress);
+  return index >= 0 && index < openCount(levels, progress, allOpen);
 }
 
 /** The passage that has to be finished before `levelId` opens, if any. */
@@ -44,7 +54,10 @@ export function unlockedBy(levels, levelId) {
   return index > 0 ? levels[index - 1] : null;
 }
 
-/** Where to send a traveller who has no valid destination in mind: the frontier. */
+/** Where to send a traveller who has no valid destination in mind: the frontier.
+ *
+ * Real progress only, deliberately. Dev mode lifts every padlock, but the traveller
+ * still lands where the campaign actually left them, not on the last passage. */
 export function frontierLevel(levels = [], progress = {}) {
   return levels[openCount(levels, progress) - 1] || levels[0];
 }

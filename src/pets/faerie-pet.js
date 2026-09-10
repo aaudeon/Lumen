@@ -97,6 +97,7 @@ export default function build(tools, root, palette) {
   let maneLag = 0;
   let blink = 2.4;
   return {
+    expression: { head, ears },
     ground: false,
     home: [-.62, 0, -.12],
     scale: 1,

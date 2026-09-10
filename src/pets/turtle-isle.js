@@ -117,6 +117,7 @@ export default function build(tools, root, palette) {
   let bord = 1;
   let blink = 4;
   return {
+    expression: { head: tete, neck: cou, legs, tail: queue },
     ground: true,
     home: [-.62, 0, -.22],
     scale: 1.2,

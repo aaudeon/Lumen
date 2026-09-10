@@ -179,6 +179,12 @@ npm run dev
 
 `npm run dev` vaut `vite --host 127.0.0.1 --configLoader native` ([package.json:7](../package.json#L7)). Ouvrez l'adresse **affichée par Vite** : le dépôt ne fixe aucun port pour le serveur de développement, c'est le défaut de l'outil qui s'applique.
 
+### Déverrouiller la campagne pour tester
+
+Les niveaux s'ouvrent un par un, ce qui est pénible quand on développe le dernier monde. Ajoutez **`?dev`** à l'adresse — celle de Vite comme celle du serveur Python — et tous les passages deviennent jouables, avec un badge **MODE DÉV** en haut de l'écran. Le mode est retenu pour l'onglet, `?dev=0` ou un clic sur le badge en sort, et fermer l'onglet y met fin ([src/dev-mode.js](../src/dev-mode.js)).
+
+Rien de sauvegardé ne change : c'est la vérification du verrou qui est suspendue, pas la progression. Cela signifie aussi que le mode dév n'est **pas** un secret : il vit dans le code du client, comme le verrou lui-même, que le serveur n'applique pas non plus.
+
 | | `python start.py` (serveur Python) | `npm run dev` (Vite) |
 |---|---|---|
 | Ce qui sert le client | `backend/server.py`, depuis `dist/` ([backend/server.py:151-177](../backend/server.py#L151)) | Vite, depuis les sources |

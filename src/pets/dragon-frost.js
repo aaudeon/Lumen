@@ -108,6 +108,7 @@ export default function build(tools, root, palette) {
   let poise = 0;
   let blink = 3.1;
   return {
+    expression: { head, jaw, wings, tail },
     ground: false,
     home: [-.62, 0, -.12],
     animate(time, { moving = false, speed = 0, dt = .016 } = {}) {

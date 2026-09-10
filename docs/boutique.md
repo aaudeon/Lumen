@@ -72,7 +72,7 @@ Le barème et les règles du portefeuille ne changent pas. Une victoire rapporte
 
 | Mesure au 10 septembre 2026 | Crédits / points |
 | --- | ---: |
-| Plafond théorique des 24 niveaux, trésors inclus | 48 440 |
+| Plafond théorique des 29 niveaux, trésors inclus | 62 980 |
 | Catalogue historique | 34 900 |
 | Une nouvelle collection complète | 7 300 |
 | Les six nouvelles collections | 43 800 |

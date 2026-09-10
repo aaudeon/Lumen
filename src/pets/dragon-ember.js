@@ -71,6 +71,7 @@ export default function build(tools, root, palette) {
   let since = 1.6;
   let blink = 2.4;
   return {
+    expression: { head, jaw, wings, tail },
     ground: false,
     home: [-.62, 0, -.14],
     animate(time, { moving = false, speed = 0, dt = .016 } = {}) {

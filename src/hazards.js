@@ -1,3 +1,5 @@
+import { buildCrocodile } from './crocodile.js';
+
 /** Small, self-owned 3D props that make each tile's rule visible from any angle. */
 
 /** Shared modelling tools: every prop owns its geometries, materials and animations. */
@@ -37,59 +39,7 @@ function toolkit(THREE) {
   };
 }
 
-/** The guardian rig, shared by the stones that hold one and by the roaming patrols. */
-function buildCrocodile(tools, parent, seed) {
-  const { block, geometry, material, mesh, animations } = tools;
-  const skin = material(0x427b43);
-  const dark = material(0x254b2e);
-  const belly = material(0xc0ba75);
-  const eye = material(0xf7ca4f, { emissive: 0x9b4a11, emissiveIntensity: .4 });
-  const pupil = material(0x182c25);
-  const ivory = material(0xffecc0);
-  const mouth = material(0x753f37);
-  const body = new tools.THREE.Group();
-  parent.add(body);
-  mesh(body, block, skin, [0, .205, -.075], [.34, .20, .56]);
-  mesh(body, block, belly, [0, .13, .015], [.29, .06, .59]);
-  for (const side of [-1, 1]) {
-    for (const z of [-.22, .12]) {
-      const leg = mesh(body, block, skin, [side * .225, .125, z], [.18, .10, .13]);
-      leg.rotation.y = side * .35;
-      mesh(body, block, dark, [side * .30, .092, z + .035], [.13, .045, .14]);
-      for (let claw = 0; claw < 2; claw++) mesh(body, block, ivory,
-        [side * (.26 + claw * .06), .10, z + .118], [.025, .018, .045]);
-    }
-  }
-  mesh(body, block, mouth, [0, .19, .36], [.255, .024, .30]);
-  mesh(body, block, belly, [0, .17, .365], [.28, .055, .32]);
-  const jaw = new tools.THREE.Group();
-  jaw.position.set(0, .245, .18);
-  body.add(jaw);
-  mesh(jaw, block, skin, [0, 0, .14], [.30, .105, .34]);
-  for (const side of [-1, 1]) {
-    mesh(jaw, block, dark, [side * .105, .06, .025], [.115, .085, .125]);
-    mesh(jaw, block, eye, [side * .115, .085, .061], [.067, .062, .067]);
-    mesh(jaw, block, pupil, [side * .118, .093, .098], [.027, .044, .012]);
-    mesh(jaw, block, dark, [side * .076, .06, .256], [.027, .018, .025]);
-    for (const z of [.10, .22]) mesh(jaw, block, ivory, [side * .128, -.063, z], [.028, .052, .032]);
-  }
-  const tail = new tools.THREE.Group();
-  tail.position.set(0, .17, -.30);
-  body.add(tail);
-  mesh(tail, block, skin, [0, -.005, -.15], [.22, .13, .31]);
-  const tip = mesh(tail, block, dark, [.045, -.015, -.36], [.105, .075, .24]);
-  tip.rotation.y = -.30;
-  const spike = geometry(new tools.THREE.ConeGeometry(.065, .10, 4));
-  for (let i = 0; i < 4; i++) mesh(body, spike, dark, [0, .35, .13 - i * .12], [1, 1, 1]);
-  animations.push((time, { walking = 0 } = {}) => {
-    body.position.y = Math.sin(time * 1.8 + seed) * .008 + walking * .012;
-    tail.rotation.y = Math.sin(time * (1.15 + walking * 4) + seed) * (.17 + walking * .22);
-    jaw.rotation.x = -.08 - Math.max(0, Math.sin(time * .75 + seed)) ** 8 * .19;
-  });
-  return body;
-}
-
-export function createTileHazard({ THREE, tile }) {
+export function createTileHazard({ THREE, tile, biome }) {
   const tools = toolkit(THREE);
   const { block, geometry, material, mesh, bar, animations } = tools;
   const root = new THREE.Group();
@@ -104,6 +54,22 @@ export function createTileHazard({ THREE, tile }) {
     crocodile.rotation.y = tile.ports.includes('E') && tile.ports.includes('W') ? Math.PI / 2 : -.22;
     root.add(crocodile);
     buildCrocodile(tools, crocodile, seed);
+  } else if (tile.hazard === 'ice') {
+    const glass=material(0x51badc,{roughness:.12,metalness:.25,emissive:0x2575a5,emissiveIntensity:.28});
+    const frost=material(0xdafaff,{emissive:0x53aacb,emissiveIntensity:.5});
+    mesh(root,block,glass,[0,.097,0],[.47,.022,.47]);
+    const directions={N:[0,-1],E:[1,0],S:[0,1],W:[-1,0]};
+    for(const port of tile.ports) {
+      const [x,z]=directions[port];
+      mesh(root,block,glass,[x*.32,.097,z*.32],[x?.64:.47,.022,z?.64:.47]);
+      for(const edge of [-1,1])bar(root,frost,[x*.07+z*edge*.19,z*.07+x*edge*.19],[x*.6+z*edge*.19,z*.6+x*edge*.19],.012,.113);
+    }
+    // A snowflake on the corner identifies ice even when the route is highlighted.
+    for(let ray=0;ray<3;ray++) {
+      const a=ray*Math.PI/3,x=Math.cos(a)*.095,z=Math.sin(a)*.095;
+      bar(root,frost,[-.43-x,-.43-z],[-.43+x,-.43+z],.014,.085);
+    }
+    animations.push(t=>{glass.emissiveIntensity=.26+Math.sin(t*1.4+seed)*.06;});
   } else if (tile.hazard === 'current') {
     const water = material(0x37becf, { transparent: true, opacity: .48, metalness: .2, roughness: .22,
       emissive: 0x087f9c, emissiveIntensity: .32, depthWrite: false });
@@ -137,10 +103,11 @@ export function createTileHazard({ THREE, tile }) {
     onBoard = ({ heading }) => { if (heading && angles[heading] !== undefined) turn = angles[heading]; };
   } else if (tile.hazard === 'fragile' || tile.hazard === 'brittle') {
     const ready = tile.hazard === 'fragile';
+    const frozen = biome === 'boreal';
     const dark = material(0x382d34);
-    const ember = material(ready ? 0xffbd6f : 0x9d7a63,
-      { emissive: ready ? 0xff591b : 0x4a1d0a, emissiveIntensity: ready ? 1.1 : .3, roughness: .5 });
-    const chip = material(0x775959, { emissive: 0x44150e, emissiveIntensity: .2 });
+    const ember = material(frozen ? (ready ? 0xedb38c : 0x8bb9c5) : ready ? 0xffbd6f : 0x9d7a63,
+      { emissive: frozen ? 0x52758b : ready ? 0xff591b : 0x4a1d0a, emissiveIntensity: ready ? 1.1 : .3, roughness: .5 });
+    const chip = material(frozen ? 0xb1d0df : 0x775959, { emissive: frozen ? 0x294a60 : 0x44150e, emissiveIntensity: .2 });
     const cracks = ready ? [
       [[-.56, -.38], [-.24, -.24], [.02, -.05], [.16, .23], [.47, .53]],
       [[.55, -.43], [.21, -.27], [.02, -.05], [-.15, .18], [-.51, .39]],
@@ -250,11 +217,11 @@ export function createGuardian({ THREE, seed = 0 }) {
     root,
     /** Face the next cell while gliding towards the current one. */
     face(angle) { heading = angle; },
-    update(time, dt, moving) {
+    update(time, dt, moving, context = {}) {
       walking += ((moving ? 1 : 0) - walking) * (1 - Math.exp(-dt * 9));
       const turn = Math.atan2(Math.sin(heading - body.rotation.y), Math.cos(heading - body.rotation.y));
       body.rotation.y += turn * (1 - Math.exp(-dt * 9));
-      for (const animate of tools.animations) animate(time, { walking });
+      for (const animate of tools.animations) animate(time, { ...context, walking, dt });
     },
     dispose() { if (!disposed) { disposed = true; tools.dispose(root); } },
   };

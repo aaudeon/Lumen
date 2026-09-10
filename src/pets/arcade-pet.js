@@ -61,6 +61,7 @@ export default function build(tools, root, palette) {
   let blinkIn = 2.2;
   let fade = 0;
   return {
+    expression: { pupils },
     ground: false,
     home: [-.62, 0, -.2],
     scale: 1.1,

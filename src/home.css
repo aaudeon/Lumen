@@ -76,3 +76,21 @@
 .journal-reset-actions{display:flex;gap:10px;margin-top:15px}
 .journal-reset-actions button{font-size:10px;padding:9px 15px;border-radius:5px;border:1px solid #a0b19040;color:#c6cfb4}
 .journal-reset-actions .journal-reset-go{background:#5c332e;border-color:#cf8a7f5c;color:#f4d8cf}
+/* Boréale: indigo night, silver stone and mint auroras. */
+.expedition-home[data-biome=boreal]{background:radial-gradient(ellipse at 67% 39%,#405677,#273953 46%,#1a263d 78%,#121b31)}
+.expedition-home[data-biome=boreal] .home-ambient{background:linear-gradient(124deg,transparent 25%,#65d6bd0b 40%,transparent 53%,#ab9dea0b 70%,transparent)}
+.expedition-home[data-biome=boreal] .expedition-card{background:linear-gradient(110deg,#344a65ef,#25354ded);border-color:#b6d6e247}
+.expedition-home[data-biome=boreal] .home-intro h1 em{color:#b6ebdb}
+.expedition-home[data-biome=boreal] :is(.home-kicker,.home-intro>p:last-of-type){color:#bacfe1}
+.expedition-home[data-biome=boreal] .map-stop-number{background:linear-gradient(145deg,#849fb6,#425c7b);border-color:#bedbe5}
+.expedition-home[data-biome=boreal] .map-stop.chosen .map-stop-number{background:linear-gradient(145deg,#e9f5e4,#9bd9d0);color:#244454;border-color:#f1fff0;box-shadow:0 0 0 7px #9debd81c,0 0 0 8px #aee9e666,0 5px 0 #223b55,0 0 32px #aaeedd44}
+.expedition-home[data-biome=boreal] .map-stop-caption{background:#203149e8}
+.expedition-home[data-biome=boreal] .mechanic-tag{color:#b6e8ed;border-color:#a0d4e855}
+.expedition-home[data-biome=boreal] .map-fireflies i{background:#e4f5ff;box-shadow:0 0 6px #c7e5ff}
+.expedition-home[data-biome=boreal] .home-modal{background:linear-gradient(145deg,#3c526c,#23364e)}
+.biome-tabs button[data-world=boreal]>span{color:#b5e5ee}
+.game-shell[data-biome=boreal]{--gold:#e0d5b5;--mint:#a3e7d5;background:radial-gradient(ellipse at 70% 37%,#526a8d,#32435f 35%,#232f48 65%,#171f35)}
+.game-shell[data-biome=boreal] :is(.story,.world-caption p){color:#bccddd}
+.arrival-scene[data-biome=boreal] .arrival-veil{background:radial-gradient(ellipse at 50% 40%,#56888033,#152139d9 70%)}
+.arrival-scene[data-biome=boreal] .arrival-symbol{color:#acf0df;text-shadow:0 0 45px #8bd9d36b}
+@media(max-width:700px){.biome-tabs button{gap:4px;padding:7px 3px}.biome-tabs button>span{font-size:19px}.biome-tabs strong{font-size:8px}.biome-tabs small{font-size:5px}}

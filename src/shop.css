@@ -36,3 +36,10 @@
 .atelier-menagerie .atelier-filters{grid-template-columns:repeat(3,minmax(0,1fr))}.atelier-menagerie .atelier-thumbnail{height:113px}
 @media(max-width:950px){.atelier-rooms{padding:0 20px 13px}.atelier-families{padding:0 20px 14px;grid-auto-columns:max-content}.atelier-families button{flex-direction:row;align-items:center;gap:6px}.atelier-families small{display:none}}
 @media(max-width:680px){.atelier-rooms{padding:0 15px 10px;gap:7px}.atelier-rooms button{justify-content:center;flex:1;padding:8px 10px;font-size:11px}.atelier-rooms button>span{font-size:16px}.atelier-families{padding:0 15px 10px;gap:6px}.atelier-families button{padding:8px 10px}.atelier-families button span{font-size:10px}.atelier-menagerie .atelier-filters select{font-size:9px}.atelier-menagerie .atelier-stage{height:166px}.atelier-menagerie .atelier-preview{grid-template-rows:auto 166px auto}}
+
+.atelier-reactions{margin:14px 0 0;text-align:center}
+.atelier-reactions>span{font-size:8px;letter-spacing:1.4px;color:#9aaf9d}
+.atelier-reactions>div{display:flex;justify-content:center;gap:6px;margin-top:7px}
+.atelier-reactions button{border:1px solid #d7c39455;border-radius:8px;background:#dfc88f0d;color:#e7d8b6;padding:9px 12px;font-size:10px}
+.atelier-reactions button:hover{background:#dfc88f22;border-color:#dfc88f}
+@media(max-width:680px){.atelier-reactions{grid-column:1/-1;grid-row:4;margin:10px 0 0}.atelier-reactions>span{display:none}.atelier-reactions>div{margin:0}.atelier-reactions button{flex:1;min-height:36px;padding:7px 4px;font-size:10px}.atelier-menagerie .atelier-catalogue :is(button,input,select,summary){scroll-margin-top:290px}}

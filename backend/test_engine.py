@@ -60,8 +60,8 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(len(shapes), len(LEVELS))
         self.assertEqual([level.chapter for level in LEVELS], list(range(1, len(LEVELS) + 1)))
         order = [level.biome for level in LEVELS]
-        self.assertEqual(order, sorted(order, key=["jungle", "atlantis", "volcano"].index))
-        for biome in ("jungle", "atlantis", "volcano"):
+        self.assertEqual(order, sorted(order, key=["jungle", "atlantis", "volcano", "boreal"].index))
+        for biome in ("jungle", "atlantis", "volcano", "boreal"):
             levels = [level for level in LEVELS if level.biome == biome]
             self.assertGreaterEqual(len(levels), 5)
             self.assertEqual([level.biomeLevel for level in levels],

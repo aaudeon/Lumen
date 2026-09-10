@@ -95,6 +95,7 @@ export default function build(tools, root, palette) {
   let spin = 0;
   let shutter = 1.9;
   return {
+    expression: { head: shell },
     ground: true,
     home: [-.62, 0, -.14],
     scale: 1.05,

@@ -11,28 +11,33 @@
  */
 import { readFileSync } from 'node:fs';
 import { EMPTY_WARDROBE, DEFAULT_LOOK } from '../src/cosmetics.js';
-import { SAVE_KEYS } from '../src/campaign.js';
+import { BIOMES, SAVE_KEYS } from '../src/campaign.js';
 import { buttons, load } from './render.mjs';
 
 const root = new URL('../', import.meta.url);
 const render = await load('HomeScreen.jsx');
 
-/** The campaign as `/api/levels` serves it: chapter order, worlds in contiguous blocks. */
-const LEVELS = [
-  ...Array.from({ length: 10 }, (_, i) => ({ biome: 'jungle', biomeLevel: i + 1, chapter: i + 1 })),
-  ...Array.from({ length: 7 }, (_, i) => ({ biome: 'atlantis', biomeLevel: i + 1, chapter: i + 11 })),
-  ...Array.from({ length: 7 }, (_, i) => ({ biome: 'volcano', biomeLevel: i + 1, chapter: i + 18 })),
-].map(level => ({ ...level, id: `n${level.chapter}`, name: `Passage ${level.chapter}`,
-  subtitle: 'Un chemin.', difficulty: 'Exploration', par: 5, stepPar: 9 }));
+/** The campaign as `/api/levels` serves it: chapter order, worlds in contiguous blocks.
+ *  Built from `BIOMES`, so a world added to the campaign is covered without a rewrite. */
+const PER_WORLD = 5;
+const LEVELS = BIOMES.flatMap((world, index) => Array.from({ length: PER_WORLD }, (_, i) => {
+  const chapter = index * PER_WORLD + i + 1;
+  return { id: `n${chapter}`, chapter, biomeLevel: i + 1, biome: world.id,
+    name: `Passage ${chapter}`, subtitle: 'Un chemin.', difficulty: 'Exploration', par: 5, stepPar: 9 };
+}));
+/** The levels of the nth world of the campaign. */
+const worldBlock = index => LEVELS.filter(level => level.biome === BIOMES[index].id);
 
 const finished = count => Object.fromEntries(LEVELS.slice(0, count)
   .map(level => [level.id, { completed: true, moves: 12, score: 900 }]));
 
-const screen = progress => render({
+const props = progress => ({
   levels: LEVELS, progress, currentGame: null, busy: false, error: '',
   onStart() {}, onSound() {}, sound: false, onBuy() {}, onEquip() {}, onReset() {},
   wardrobe: { ...EMPTY_WARDROBE, equipped: { ...DEFAULT_LOOK } }, credits: 0,
 });
+const screen = progress => render(props(progress));
+const numeral = chapter => String(chapter).padStart(2, '0');
 
 const stop = (markup, chapter) => buttons(markup)
   .find(button => button.includes(`aria-label="Niveau ${chapter} :`));
@@ -58,37 +63,39 @@ const open = (button, where) => {
   check(!button.includes('lock-mark'), `${where} : cadenas affiché sur un passage ouvert`);
 };
 
+const firstWorld = worldBlock(0);
+
 // A brand-new account: one passage, and one only. The map opens on the frontier's world.
 const fresh = screen({});
-open(stop(fresh, 1), 'Compte neuf · passage 01');
-for (let chapter = 2; chapter <= 10; chapter++) shut(stop(fresh, chapter), `Compte neuf · passage ${String(chapter).padStart(2, '0')}`);
-open(worldTab(fresh, 'jungle'), 'Compte neuf · onglet Jungle');
-shut(worldTab(fresh, 'atlantis'), 'Compte neuf · onglet Atlantide');
-shut(worldTab(fresh, 'volcano'), 'Compte neuf · onglet Volcan');
+open(stop(fresh, firstWorld[0].chapter), `Compte neuf · passage ${numeral(firstWorld[0].chapter)}`);
+for (const level of firstWorld.slice(1)) shut(stop(fresh, level.chapter), `Compte neuf · passage ${numeral(level.chapter)}`);
+open(worldTab(fresh, BIOMES[0].id), `Compte neuf · onglet ${BIOMES[0].name}`);
+for (const world of BIOMES.slice(1)) shut(worldTab(fresh, world.id), `Compte neuf · onglet ${world.name}`);
 open(play(fresh), 'Compte neuf · bouton Explorer');
 
 // One passage finished opens the next one, and stops there.
 const one = screen(finished(1));
 open(stop(one, 2), 'Passage 01 terminé · passage 02');
 shut(stop(one, 3), 'Passage 01 terminé · passage 03');
-shut(worldTab(one, 'atlantis'), 'Passage 01 terminé · onglet Atlantide');
+for (const world of BIOMES.slice(1)) shut(worldTab(one, world.id), `Passage 01 terminé · onglet ${world.name}`);
 
-// One passage short of the next world: the whole jungle is open, Atlantide is not.
-const almost = screen(finished(9));
-for (let chapter = 1; chapter <= 10; chapter++) open(stop(almost, chapter), `Jungle presque finie · passage ${String(chapter).padStart(2, '0')}`);
-shut(worldTab(almost, 'atlantis'), 'Jungle presque finie · onglet Atlantide');
+// One passage short of the next world: the first world is open, the second is not.
+const almost = screen(finished(firstWorld.length - 1));
+for (const level of firstWorld) open(stop(almost, level.chapter), `${BIOMES[0].name} presque finie · passage ${numeral(level.chapter)}`);
+shut(worldTab(almost, BIOMES[1].id), `${BIOMES[0].name} presque finie · onglet ${BIOMES[1].name}`);
 
 // The last passage of a world is the key to the next one.
-const jungleDone = screen(finished(10));
-open(worldTab(jungleDone, 'atlantis'), 'Jungle terminée · onglet Atlantide');
-shut(worldTab(jungleDone, 'volcano'), 'Jungle terminée · onglet Volcan');
-open(stop(jungleDone, 11), 'Jungle terminée · passage 11');
-shut(stop(jungleDone, 12), 'Jungle terminée · passage 12');
+const secondWorld = worldBlock(1);
+const worldDone = screen(finished(firstWorld.length));
+open(worldTab(worldDone, BIOMES[1].id), `${BIOMES[0].name} terminée · onglet ${BIOMES[1].name}`);
+for (const world of BIOMES.slice(2)) shut(worldTab(worldDone, world.id), `${BIOMES[0].name} terminée · onglet ${world.name}`);
+open(stop(worldDone, secondWorld[0].chapter), `${BIOMES[0].name} terminée · passage ${numeral(secondWorld[0].chapter)}`);
+shut(stop(worldDone, secondWorld[1].chapter), `${BIOMES[0].name} terminée · passage ${numeral(secondWorld[1].chapter)}`);
 
 // Nothing stays shut once the campaign is over.
 const allDone = screen(finished(LEVELS.length));
 check(!allDone.includes('lock-mark'), 'Campagne terminée · un cadenas subsiste');
-for (const world of ['jungle', 'atlantis', 'volcano']) open(worldTab(allDone, world), `Campagne terminée · onglet ${world}`);
+for (const world of BIOMES) open(worldTab(allDone, world.id), `Campagne terminée · onglet ${world.name}`);
 
 // Starting over has to forget every key the game writes, or the reset lies.
 const appSource = readFileSync(new URL('src/App.jsx', root), 'utf8');
@@ -100,11 +107,26 @@ check(appSource.includes('function resetAccount()'), 'Remise à zéro · App n�
 check(appSource.includes('function migrate()'), 'Remise à zéro · la migration de format de sauvegarde a disparu');
 check(appSource.includes('onReset={resetAccount}'), 'Remise à zéro · le carnet n’est plus branché sur resetAccount');
 
+// Dev mode: every padlock lifted on an untouched account, and a badge that says so.
+globalThis.location = { search: '?dev', href: 'http://127.0.0.1:8765/?dev' };
+const devScreen = await load('HomeScreen.jsx', 'dev');
+delete globalThis.location;
+const dev = devScreen(props({}));
+check(!dev.includes('lock-mark'), 'Mode dév · un cadenas subsiste alors que tout est ouvert');
+check(dev.includes('MODE DÉV'), 'Mode dév · rien ne signale la session à l’écran');
+for (const world of BIOMES) open(worldTab(dev, world.id), `Mode dév · onglet ${world.name}`);
+for (const level of firstWorld) open(stop(dev, level.chapter), `Mode dév · passage ${numeral(level.chapter)}`);
+open(play(dev), 'Mode dév · bouton Explorer');
+// And it stays a view of the campaign: an untouched account still lands on passage one.
+check(dev.includes('VOTRE DESTINATION'), 'Mode dév · la carte n’ouvre plus sur la frontière réelle');
+check(!screen({}).includes('MODE DÉV'), 'Session normale · le badge de mode dév s’affiche à tort');
+
 if (problems.length) {
   console.error('progression : ' + problems.length + ' problème(s)');
   for (const problem of problems) console.error('   ' + problem);
   process.exit(1);
 }
-console.log(`progression conforme : ${LEVELS.length} passages, un seul ouvert au départ, un de plus par victoire`);
+console.log(`progression conforme : ${BIOMES.length} mondes, ${LEVELS.length} passages, un seul ouvert au départ`);
 console.log('   cadenas et « disabled » vont de pair sur la carte, les onglets de monde et le bouton Explorer');
 console.log(`   remise à zéro : ${SAVE_KEYS.length} clés effacées, soit tout ce qu’App.jsx écrit`);
+console.log('   mode dév : tout est ouvert, le badge est visible, et la carte reste sur la frontière réelle');

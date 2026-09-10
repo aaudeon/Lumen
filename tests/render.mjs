@@ -13,9 +13,14 @@ import { mkdirSync } from 'node:fs';
 
 const root = new URL('../', import.meta.url);
 
-/** The default export of `src/<name>`, ready to render. */
-export async function load(name) {
-  const outfile = fileURLToPath(new URL(`work/${name.replace(/\W+/g, '-')}.check.mjs`, root));
+/** The default export of `src/<name>`, ready to render.
+ *
+ * `tag` gives the bundle its own path, and so its own module instance: a screen whose
+ * modules read the environment at load — dev mode does — can be rendered twice in one
+ * process, once per environment. */
+export async function load(name, tag = '') {
+  const stem = `${name}${tag && `-${tag}`}`.replace(/\W+/g, '-');
+  const outfile = fileURLToPath(new URL(`work/${stem}.check.mjs`, root));
   mkdirSync(fileURLToPath(new URL('work/', root)), { recursive: true });
   await build({
     entryPoints: [fileURLToPath(new URL(`src/${name}`, root))],

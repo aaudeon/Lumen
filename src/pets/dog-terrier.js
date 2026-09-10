@@ -82,6 +82,7 @@ export default function build(tools, root, palette) {
   let settle = 1;
   let jolt = 0;
   return {
+    expression: { head, ears, tail },
     ground: true,
     home: [-.62, 0, .06],
     scale: 1.05,

@@ -636,6 +636,11 @@ que la série de passages terminés en tête de `/api/levels`, et le passage sui
 *Preuve.* `loadLevel` et `startExpedition` refusent un niveau fermé, et l'interface le grise partout
 (carte, onglets de monde, barre de chapitres, liste des chapitres, carnet). Le serveur, lui, accepte
 toujours `POST /api/game {levelId}` : **le cadenas n'est pas une garantie côté serveur**.
+
+*Conséquence assumée.* Le mode dév (`?dev`, [src/dev-mode.js](../src/dev-mode.js)) n'est donc pas une
+faille : il passe `allOpen` à `openCount`, et se contente de ne pas appliquer une règle que le serveur
+n'applique pas davantage. `frontierLevel` ignore volontairement cet indicateur — la position dans la
+campagne reste un fait, pas un affichage.
 **Aucune condition de défaite n'existe dans le moteur** : ni vies, ni limite de coups, ni chronomètre
 serveur. `won` est la seule issue.
 

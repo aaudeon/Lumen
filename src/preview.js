@@ -8,6 +8,7 @@ import { createExplorer } from './explorer.js';
 
 export function createExplorerPreview(host, { style, biome = 'jungle' } = {}) {
   const tints = {
+    boreal: { sky:0xbadbea,ground:0x293750,key:0xf4e7ce,rim:0x8de6d5 },
     jungle: { sky: 0x9fc6c0, ground: 0x1d3a26, key: 0xffe0a8, rim: 0x76c6a8 },
     atlantis: { sky: 0x9fd4e2, ground: 0x123244, key: 0xd8f4ff, rim: 0x53c4d6 },
     volcano: { sky: 0xd9b7a4, ground: 0x2a1a1e, key: 0xffcf9a, rim: 0xff7a44 },
@@ -147,6 +148,7 @@ export function createExplorerPreview(host, { style, biome = 'jungle' } = {}) {
   return {
     setStyle(next) { explorer.setStyle(next);frameCamera(); },
     setWalking(next){walking=next;},
+    react(kind){explorer.react(kind);},
     /** Frame the part being tried on; without a slot, back to the full figure. */
     focusSlot(slot) {
       focus=slot;

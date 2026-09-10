@@ -44,7 +44,8 @@ export function creatureKit(tools, root) {
     return [-1, 1].map(side => {
       const socket = group(parent, side * x, y, z);
       piece(socket, orb, sclera, [0, 0, 0], [size, size * 1.05, size * .7]);
-      piece(socket, orb, iris, [0, 0, size * .5], [size * .5, size * .68, size * .4]);
+      const pupilMesh = piece(socket, orb, iris, [0, 0, size * .5], [size * .5, size * .68, size * .4]);
+      (root.userData.petEyes ||= []).push({ socket, iris: pupilMesh });
       return socket;
     });
   }

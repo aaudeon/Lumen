@@ -83,6 +83,7 @@ export default function build(tools, root, palette) {
   let swim = 0;
   let coil = 1;
   return {
+    expression: { head },
     ground: false,
     home: [-.62, 0, -.18],
     animate(time, { moving = false, speed = 0, dt = .016 } = {}) {

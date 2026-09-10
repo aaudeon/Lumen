@@ -2,11 +2,15 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createGameScene } from './scene.js';
 import { GameAudio } from './audio.js';
 import HomeScreen from './HomeScreen.jsx';
-import { BIOMES, frontierLevel, getBiome, isOpen, SAVE_KEYS, SAVE_VERSION, VERSION_KEY } from './campaign.js';
+import { BIOMES, frontierLevel, getBiome, isOpen as passageOpen, SAVE_KEYS, SAVE_VERSION, VERSION_KEY } from './campaign.js';
+import { DEV_MODE, exitDevMode } from './dev-mode.js';
 import { directionalDestination } from './motion.js';
 import { getBoardProfile } from './boards.js';
 import { LABELS, scoreRun, walletTotal } from './score.js';
 import { EMPTY_WARDROBE, DEFAULT_LOOK, equip, purchase, spendable } from './cosmetics.js';
+
+/** Dev mode lifts every padlock; otherwise the campaign rules decide. */
+const isOpen = (levels, progress, levelId) => passageOpen(levels, progress, levelId, DEV_MODE);
 
 function Icon({ name, size = 20, ...props }) {
   const paths = {
@@ -386,6 +390,7 @@ export default function App() {
   const hazardText = guardedCell ? 'Crocodile en maraude · sa pierre est bloquée jusqu’à son départ'
     : hoveredHazard === 'crocodile' ? 'Crocodile · passage interdit, dalle déplaçable'
     : hoveredHazard === 'current' ? `Courant · sortie vers ${compass[game.tiles[hovered].heading || game.tiles[hovered].flow]}`
+    : hoveredHazard === 'ice' ? 'Glace · tout droit, sans tourner ni s’arrêter ; visez une dalle stable'
     : hoveredHazard === 'fragile' ? 'Dalle fragile · traversez jusqu’à une dalle stable'
     : hoveredHazard === 'brittle' ? 'Dalle fissurée · encore solide, elle cédera après un effondrement voisin'
     : hoveredHazard === 'gate' ? (game.gatesOpen ? 'Porte ouverte · tant que le sceau reste actif' : 'Porte close · activez son sceau pour passer')
@@ -435,6 +440,7 @@ export default function App() {
         <span className="chapter-count">{String(chapter + 1).padStart(2, '0')} <em>/ {String(levels.length || 15).padStart(2, '0')}</em></span>
       </nav>
       <div className="top-actions">
+        {DEV_MODE && <button className="dev-badge" onClick={exitDevMode} title="Mode dév : tous les passages sont ouverts. Cliquez pour en sortir."><i aria-hidden="true"/>MODE DÉV<span>quitter</span></button>}
         <span className="wallet-badge" title={`Crédits disponibles : ${credits.toLocaleString('fr-FR')} · portefeuille : ${wallet.toLocaleString('fr-FR')} pts, un record qui ne baisse jamais`}><Icon name="relic" size={14}/><strong>{credits.toLocaleString('fr-FR')}</strong><small>CRÉDITS</small></span>
         <button className="map-return" disabled={busy} onClick={returnToMap} title="Revenir à la carte" aria-label="Revenir à la carte">← <span>Carte</span></button>
         <button className={`icon-button ${sound ? 'on' : ''}`} title={sound ? 'Couper l’ambiance (M)' : 'Activer l’ambiance (M)'} aria-label={sound ? 'Couper le son' : 'Activer le son'} aria-pressed={sound} onClick={toggleSound}><Icon name={sound ? 'volume' : 'mute'}/></button>
@@ -536,19 +542,19 @@ export default function App() {
         <article><span>02</span><div><h3>Explorez quand vous voulez</h3><p>En mode Explorer, survolez une dalle stable pour voir le trajet, puis cliquez pour le parcourir. « Avancer » rejoint le prochain point d’arrêt sûr.</p></div><Icon name="foot" size={26}/></article>
         <article><span>03</span><div><h3>Votre présence change le puzzle</h3><p>Une dalle occupée est verrouillée. Faites avancer l’aventurier, puis déplacez les pierres libérées. Rejoignez le portail pour terminer.</p></div><Icon name="lock" size={25}/></article>
       </div>
-      <div className="hazard-guide"><p><strong>Crocodiles</strong> · Leur dalle peut glisser, mais Lumen ne peut pas la traverser. Certains patrouillent : ils changent de pierre à chaque dalle déplacée, et la case qu’ils visent est signalée.</p><p><strong>Courants</strong> · La flèche impose la direction de sortie de cette dalle.</p><p><strong>Marée</strong> · Le levier inverse tous les courants et découvre les dalles immergées. Il compte comme un déplacement.</p><p><strong>Sceaux et portes</strong> · Une porte s’ouvre quand son sceau est actif : sous la pierre de lest, ou après que Lumen a touché le levier.</p><p><strong>Dalles fragiles</strong> · Rejoignez une dalle stable en une seule course. Les pierres fragiles tombent derrière vous, créent de nouveaux vides et lézardent leurs voisines fissurées.</p><p><strong>Trésors</strong> · Chaque relique est un cul-de-sac : elle coûte un détour et ne raccourcit jamais la route.</p></div>
+      <div className="hazard-guide"><p><strong>Glace de Boréale</strong> · Lumen garde sa direction d’arrivée et ne peut ni tourner ni s’arrêter. Choisissez une dalle stable au-delà : le trajet complet est annoncé avant la traversée.</p><p><strong>Crocodiles</strong> · Leur dalle peut glisser, mais Lumen ne peut pas la traverser. Certains patrouillent : ils changent de pierre à chaque dalle déplacée, et la case qu’ils visent est signalée.</p><p><strong>Courants</strong> · La flèche impose la direction de sortie de cette dalle.</p><p><strong>Marée</strong> · Le levier inverse tous les courants et découvre les dalles immergées. Il compte comme un déplacement.</p><p><strong>Sceaux et portes</strong> · Une porte s’ouvre quand son sceau est actif : sous la pierre de lest, ou après que Lumen a touché le levier.</p><p><strong>Dalles fragiles</strong> · Rejoignez une dalle stable en une seule course. Les pierres fragiles tombent derrière vous, créent de nouveaux vides et lézardent leurs voisines fissurées.</p><p><strong>Trésors</strong> · Chaque relique est un cul-de-sac : elle coûte un détour et ne raccourcit jamais la route.</p></div>
       <p className="help-tip"><Icon name="bulb" size={19}/> Revenez sur vos pas quand le chemin le permet, ou annulez votre action. Un indice montre la prochaine action possible vers une solution.</p>
       <div className="shortcut-list"><span><kbd>ESPACE</kbd> Changer de mode</span><span><kbd>ENTRÉE</kbd> Avancer / déplacer la sélection</span><span><kbd>↑ ↓ ← →</kbd> Choisir une dalle / marcher</span><span><kbd>Z</kbd> Annuler <kbd>R</kbd> Recommencer <kbd>H</kbd> Indice <kbd>T</kbd> Marée</span></div>
       <p className="keyboard-note">Glissez sur le plateau pour tourner autour. La molette ou le pincement à deux doigts permet de zoomer. Un clic bref joue une dalle. Les flèches suivent les lignes du plateau : la vue du dessus facilite le jeu au clavier.</p>
       <button className="primary-button" onClick={closeModal}>L’aventure commence <Icon name="arrow" size={18}/></button>
     </Dialog>}
     {modal === 'levels' && <Dialog onClose={closeModal} title="Choisir un chapitre">
-      <p className="eyebrow">LES CHEMINS OUBLIÉS</p><h2>Trois mondes.<br/>{levels.length || 24} passages.</h2><p className="dialog-intro">De la canopée aux profondeurs, puis jusqu’au cœur du volcan. Chaque monde garde ses épreuves les plus récentes pour la fin.</p>
+      <p className="eyebrow">LES CHEMINS OUBLIÉS</p><h2>Quatre mondes.<br/>{levels.length || 29} passages.</h2><p className="dialog-intro">De la jungle à l’Atlantide, du volcan aux glaces de Boréale. Le grand nord combine la glisse et les épreuves apprises en chemin.</p>
       <div className="level-list">{BIOMES.map(world => <React.Fragment key={world.id}><h3 className="level-world-heading">{world.symbol} {world.name} · monde {world.world}</h3>{levels.filter(item => item.biome === world.id).map(item => {
         const shut = !isOpen(levels, progress, item.id);
         return <button className={`level-choice ${game?.levelId === item.id ? 'current' : ''} ${shut ? 'locked' : ''}`} key={item.id} disabled={busy || shut} onClick={() => loadLevel(item.id)}><span className="level-numeral">{String(item.chapter).padStart(2, '0')}</span><span><strong>{item.name}</strong><small>{shut ? `Verrouillé · terminez le niveau ${String(item.chapter - 1).padStart(2, '0')}` : `${item.difficulty} · passage ${item.biomeLevel} / ${levels.filter(other => other.biome === item.biome).length}${item.relicName ? ` · ${progress[item.id]?.relic ? '✦' : '✧'} ${item.relicName}` : ''}`}</small></span><Icon name={shut ? 'lock' : progress[item.id]?.completed ? 'check' : 'arrow'} size={22}/></button>;
       })}</React.Fragment>)}</div>
-      <p className="dialog-footnote">Les passages s’ouvrent l’un après l’autre : terminez un niveau pour déverrouiller le suivant. Vos records restent dans ce navigateur.</p>
+      <p className="dialog-footnote">{DEV_MODE ? 'Mode dév : tous les passages sont ouverts, y compris ceux que la campagne n’a pas encore déverrouillés.' : 'Les passages s’ouvrent l’un après l’autre : terminez un niveau pour déverrouiller le suivant.'} Vos records restent dans ce navigateur.</p>
     </Dialog>}
   </main></>;
 }

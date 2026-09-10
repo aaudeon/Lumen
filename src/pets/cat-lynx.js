@@ -92,6 +92,7 @@ export default function build(tools, root, palette) {
   let hunt = 0;
   let blink = 2.4;
   return {
+    expression: { head, ears, tail },
     ground: true,
     home: [-.66, 0, -.2],
     scale: 1.15,

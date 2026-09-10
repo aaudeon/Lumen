@@ -53,6 +53,7 @@ export default function build(tools, root, palette) {
   let sit = 0;
   let blink = 3;
   return {
+    expression: { head, ears, tail },
     ground: true,
     home: [-.62, 0, -.16],
     scale: 1.15,

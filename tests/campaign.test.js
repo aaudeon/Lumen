@@ -55,3 +55,24 @@ test('the save format carries a stamp, kept apart from the data it guards', () =
   assert.ok(Number.isInteger(SAVE_VERSION) && SAVE_VERSION > 0);
   assert.equal(SAVE_KEYS.includes(VERSION_KEY), false);
 });
+
+test('the dev-mode override opens every passage, whatever the progress', () => {
+  assert.equal(openCount(LEVELS, {}, true), LEVELS.length);
+  for (const level of LEVELS) assert.equal(isOpen(LEVELS, {}, level.id, true), true);
+  assert.equal(isOpen(LEVELS, done('a', 'c'), 'd', true), true);
+  assert.equal(isOpen(LEVELS, {}, 'ailleurs', true), false, 'un niveau inconnu reste fermé');
+  assert.equal(openCount([], {}, true), 0);
+});
+
+test('the override is opt-in: omitting it keeps the chain', () => {
+  assert.equal(openCount(LEVELS, {}), 1);
+  assert.equal(isOpen(LEVELS, {}, 'b'), false);
+  assert.equal(isOpen(LEVELS, {}, 'b', false), false);
+});
+
+test('the traveller still lands on the real frontier in dev mode', () => {
+  // frontierLevel takes no override: where you are is a fact of the campaign, not a view.
+  assert.equal(frontierLevel(LEVELS, {}, true).id, 'a');
+  assert.equal(frontierLevel(LEVELS, {}).id, 'a');
+  assert.equal(frontierLevel(LEVELS, done('a', 'b')).id, 'c');
+});
