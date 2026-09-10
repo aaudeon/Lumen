@@ -52,59 +52,6 @@
 .journal-score{margin-top:3px;font-size:10px;color:#c3ab7c;font-variant-numeric:tabular-nums}
 @media(max-width:700px){.home-wallet small{display:none}.home-wallet{padding:6px 9px}}
 
-/* --- Boutique de l’expédition --- */
+/* Entry point; the boutique itself owns shop.css. */
 .home-shop-open{margin-right:14px}
-.home-modal-wide{width:min(940px,100%);display:flex;flex-direction:column;overflow:hidden}
-.home-modal-wide>.home-kicker,.home-modal-wide>h2,.home-modal-wide>.home-modal-intro,
-.home-modal-wide>.home-modal-note{flex-shrink:0}
-.store-layout{display:grid;grid-template-columns:minmax(0,320px) minmax(0,1fr);gap:38px;margin-top:26px;
-  align-items:start;flex:1;min-height:0}
-.store-preview{min-width:0}
-.store-stage{position:relative;height:clamp(210px,34svh,340px);border-radius:12px;cursor:grab;
-  background:radial-gradient(ellipse at 50% 34%,#8fd9b81f,#07201d00 70%)}
-.store-stage::after{content:'';position:absolute;left:14%;right:14%;bottom:8px;height:1px;
-  background:linear-gradient(90deg,transparent,#a9bb9540,transparent)}
-.store-stage:active{cursor:grabbing}
-.store-stage canvas{display:block;width:100%;height:100%}
-.store-caption{margin-top:15px;font-size:10px;line-height:1.7;color:#8fa891;text-align:center}
-.store-caption em{display:block;font-style:normal;font-size:8px;letter-spacing:2.2px;color:#c9b67e;margin-bottom:5px}
-.store-balance{margin-top:22px;padding-top:20px;border-top:1px solid #a9bb9526;text-align:center}
-.store-balance span{display:block;font-size:8px;letter-spacing:2.2px;color:#8fa891}
-.store-balance strong{display:block;margin:7px 0 6px;font:400 34px Georgia,serif;color:#e6cd94;font-variant-numeric:tabular-nums}
-.store-balance small{display:block;font-size:9px;line-height:1.7;color:#8fa891}
-.store-note{margin:14px 0 0;font-size:10px;line-height:1.7;color:#d5bf82;text-align:center}
-.store-shelves{min-width:0;min-height:0;max-height:100%;overflow-y:auto;padding-right:16px;
-  scrollbar-width:thin;scrollbar-color:#a9bb9547 transparent}
-.store-shelves::-webkit-scrollbar{width:5px}
-.store-shelves::-webkit-scrollbar-track{background:transparent}
-.store-shelves::-webkit-scrollbar-thumb{background:#a9bb9547;border-radius:99px}
-.store-shelves::-webkit-scrollbar-thumb:hover{background:#c9b67e66}
-.store-group+.store-group{margin-top:30px}
-.store-group h3{font:20px Georgia,serif;font-weight:400;color:#e7e3cf;line-height:1.3}
-.store-group h3 small{display:block;margin-top:4px;font:400 9px/1.7 'DM Sans Variable',sans-serif;
-  letter-spacing:1.6px;text-transform:uppercase;color:#8fa891}
-.store-items{margin-top:6px}
-.store-item{display:flex;align-items:center;gap:17px;padding:17px 0;border-bottom:1px solid #a9bb9526;transition:opacity .2s}
-.store-item:last-child{border-bottom:0}
-.store-item>div:first-of-type{flex:1;min-width:0}
-.store-item strong{display:block;font-size:13px;font-weight:500;color:#e8e5c9}
-.store-item p{margin-top:6px;font-size:10px;line-height:1.75;color:#98b196}
-.store-mark{min-width:22px;text-align:center;font:19px Georgia,serif;color:#57705e}
-.store-item.held .store-mark{color:#b9a877}
-.store-item.worn .store-mark{color:#f0d79b}
-.store-item.worn strong{color:#f2e8c8}
-.store-action{display:flex;align-items:center;gap:14px;flex-shrink:0}
-.store-action em{font-style:normal;font-size:9px;letter-spacing:1.8px;text-transform:uppercase;color:#d5bf82}
-.store-price{font-size:12px;color:#c3ab7c;font-variant-numeric:tabular-nums;white-space:nowrap}
-.store-price::after{content:' cr';font-size:8px;letter-spacing:1.2px;color:#8fa891}
-.store-action button{padding:8px 15px;border:1px solid #d5b7793b;border-radius:99px;font-size:9px;
-  letter-spacing:1.6px;text-transform:uppercase;color:#e9ce99;background:#d5b7790a;white-space:nowrap}
-.store-action button:hover:not(:disabled){background:#d5b77922;border-color:#d5b77966}
-.store-action button:disabled{border-color:#a0b19026;color:#8fa891;background:none}
-@media(max-width:860px){.home-modal-wide{display:block;overflow:auto}
-  .store-layout{grid-template-columns:1fr;gap:26px}
-  .store-shelves{max-height:none;overflow:visible;padding-right:0}
-  .store-stage{height:280px}.home-shop-open{margin-right:0}}
-@media(max-width:700px){.store-item{gap:12px;padding:15px 0}.store-item p{display:none}
-  .store-action{gap:9px}.store-group h3{font-size:17px}}
-.store-fallback{display:flex;align-items:center;height:100%;padding:0 22px;font-size:10px;line-height:1.7;color:#8a9a90;text-align:center}
+@media(max-width:860px){.home-shop-open{margin-right:0}}

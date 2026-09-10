@@ -190,7 +190,7 @@ export function createGameScene(host, callbacks) {
   portalLight.position.set(0, 0.65, 0);
   portal.add(portalLight);
 
-  const explorer = createExplorer({ THREE, style: callbacks.style });
+  const explorer = createExplorer({ THREE, style: callbacks.style, effectWorld:world, portalMount:portal });
   const hero = explorer.root;
   world.add(hero);
   const heroRing = mesh(new THREE.TorusGeometry(0.29, 0.012, 5, 32), goldMat, hero, 0, 0.012, 0);

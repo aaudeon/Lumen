@@ -32,7 +32,7 @@ python start.py --port 8766
 
 Le jeu s'ouvre sur une **carte d'expédition** : choisissez l'un des trois mondes, chacun avec sa carte distincte, ses cinq passages d'origine et ses épreuves plus récentes, puis **Explorer**, **Reprendre** ou **Rejouer**. Les passages déjà terminés portent un sceau, la barre de progression compte les niveaux explorés et le **Carnet d'expédition** rassemble vos records. Les vingt-quatre niveaux restent libres d'accès.
 
-Le bouton **Carte** du plateau permet de revenir à l'accueil et de reprendre la partie en cours. Le chronomètre et le rendu 3D se mettent en pause dans l'accueil. Après une victoire, poursuivez vers le niveau suivant ou retrouvez votre progression sur la carte : le niveau 5 mène au 6 en Atlantide, et le 10 au 11 dans le volcan.
+Le bouton **Carte** du plateau permet de revenir à l'accueil et de reprendre la partie en cours. Le chronomètre et le rendu 3D se mettent en pause dans l'accueil. Après une victoire, poursuivez vers le niveau suivant ou retrouvez votre progression sur la carte : le niveau 10 mène au 11 en Atlantide, et le 17 au 18 dans le volcan.
 
 1. En mode **déplacer**, cliquez sur une dalle voisine d'un emplacement vide pour la faire glisser. Les flèches sur les dalles indiquent les glissades possibles, uniquement à l'horizontale ou à la verticale. Si plusieurs vides sont voisins de la même dalle, choisissez ensuite celui à utiliser sur le plateau ou avec les boutons proposés.
 2. **Une dalle occupée par Lumen est bloquée.** Son emplacement est une contrainte du puzzle : il faut parfois avancer avant de poursuivre le taquin.
@@ -94,21 +94,30 @@ Le barème vit dans [src/score.js](src/score.js), à l'écart de l'interface, et
 
 ## La boutique de l'expédition
 
-Depuis le pied de la carte d'expédition, la **boutique** échange les points contre de l'équipement. Le portefeuille reste un record et ne baisse jamais : les achats sont retenus à part, et les **crédits disponibles** valent portefeuille moins dépenses.
+Depuis le pied de la carte, ouvrez **Le cabinet des merveilles**. Ses **80 entrées**, dont 8 options de départ gratuites, comprennent les objets d'origine, 18 familiers et six nouvelles collections : **Clairière enchantée**, **Voyage astral**, **Le pacte du dragon**, **Atelier des merveilles**, **Les mers impossibles** et **Rêves en pixels**.
 
-Le panneau s'ouvre sur **l'aventurier en 3D**, qui tourne lentement et se laisse orienter à la souris. Survoler un article l'**essaie** immédiatement sur le personnage, et la caméra cadre la partie concernée — la tête pour un chapeau, le dos pour une cape. Rien n'est acheté tant que vous ne cliquez pas.
+Les **huit emplacements** sont le couvre-chef, la cape ou les ailes, la lumière tenue, la teinture du manteau, le familier, les traces de pas, l'aura et la parure du portail de sortie. Les pièces ont des formes propres : licorne et dragonnet ailés, lunettes d'aéronaute, astrolabe, automate, poulpe, fantôme pixel, ailes, engrenages… Seule la teinture conserve volontairement la forme du vêtement.
 
-Trois emplacements portent un **modèle 3D à part entière**, pas une teinte :
+- Choisissez une collection, cherchez un nom ou filtrez par emplacement, rareté, possession ou budget. **Six articles par page** gardent la grille courte ; les vignettes photographient les vrais modèles du jeu.
+- Touchez une pièce pour l'essayer, ou **Essayer toute la collection** pour porter un ensemble. Vous pouvez mélanger plusieurs collections. Les essais sont gratuits et ne sont pas sauvegardés.
+- Faites glisser l'aventurier pour le tourner, faites-le marcher pour voir les animations ou utilisez **Détail** pour observer une pièce. Sur téléphone, la cabine reste visible pendant le défilement du catalogue.
+- **Acheter et équiper** ne concerne que la pièce sélectionnée. **Équiper** remet un objet déjà possédé ; **Ma tenue** restaure l'apparence réellement équipée dans l'aperçu. Fermer la boutique abandonne les essais.
 
-- **Couvre-chef** — feutre à bord large (offert), chapeau de paille tressé au bord effiloché (900), casque de nacre à crête et couvre-joues (2 400), capuche d'obsidienne à plaques anguleuses et braise au front (4 200).
-- **Cape** — aucune (offert), cape de mousse à l'ourlet déchiqueté (1 400), mante de corail avec des branches aux épaules (3 200), manteau de braise semé d'escarbilles qui palpitent (5 400).
-- **Lumière** — torche de bois (offert), lanterne de laiton qui pend sous le poing (1 800), cristal d'azur flottant escorté de deux éclats (3 600), brasero suspendu à ses chaînes, plein de charbons (6 000).
+Le **portefeuille reste un record qui ne baisse jamais**. Les dépenses sont conservées séparément ; le solde disponible vaut portefeuille moins dépenses. Les achats et les tenues antérieurs restent compatibles.
 
-Un quatrième emplacement, la **teinture du manteau**, repeint la veste, les manches et la chemise (offert, puis 700 / 1 900 / 3 400).
+L'économie privilégie le choix : le catalogue complet coûte **114 100 crédits**, contre un **plafond théorique de 48 440 points** pour les 24 passages et leurs trésors. Un nouvel ensemble coûte **7 300 crédits** ; ses pièces vont de 300 à 1 700 crédits. Les douze animaux supplémentaires coûtent de 1 100 à 6 200 crédits. Les prix des pièces d'origine restent inchangés. Les raretés sont fixes et tous les prix sont visibles, sans tirage au sort. Rejouer sans améliorer son meilleur score ne crée pas de nouveaux crédits.
 
-Tout est **cosmétique** : rien n'y touche aux règles, à la difficulté ni aux records. Chaque lumière porte sa propre flamme et éclaire réellement le plateau de sa couleur. Changer de tenue reconstruit la pièce concernée sur son point d'attache, sans toucher au reste du gréement ni interrompre l'animation.
+Tout est **cosmétique**. Les familiers n'agissent pas sur les dalles, les traces s'effacent derrière les pas et la parure reste attachée à la sortie. Les lumières éclairent réellement de leur couleur. Aucun objet ne change les règles, la difficulté, les indices ou les records.
 
-Le catalogue et les règles d'achat vivent dans [src/cosmetics.js](src/cosmetics.js), les modèles dans [src/gear.js](src/gear.js) et l'aperçu dans [src/preview.js](src/preview.js). `tests/cosmetics.test.js` couvre le catalogue, le solde, les achats refusés et l'équipement ; `tests/props.check.mjs` monte le personnage hors navigateur, lui fait essayer les seize pièces, vérifie que chacune apporte bien ses couleurs au rendu et qu'une douzaine de changements ne laisse aucune géométrie derrière elle.
+### Le bestiaire
+
+Les familiers ont leur propre rayon, à côté de **Tenues & effets** : un onglet **Familiers**, puis une rangée de familles — chats, chiens, tortues, dragons, et les merveilles venues des collections. Chaque compagnon est modelé et animé dans son propre module, `src/pets/<id>.js`.
+
+Leurs volumes cubiques, yeux en pixels et carapaces à étages suivent le style de l'aventurier. Les pattes ont des raccords aux articulations. L'aperçu rapproche le compagnon seul : son socle et le cadrage restent fixes pendant ses animations et la rotation. **Ensemble** permet de le revoir auprès de Lumen.
+
+Ils ne flottent pas sur place : le gréement leur applique un retard de suivi — ils traînent derrière quand vous partez, reviennent quand vous vous arrêtez — et chaque espèce a sa démarche. Un corgi piétine, un lynx traque, une tortue rentre la tête quand vous pressez le pas, un wyrm ondule. `tests/pets.check.mjs` mesure ces mouvements et **refuse deux créatures dont la signature se ressemble**.
+
+Le fonctionnement, l'économie et l'ajout de collections ou de familiers sont décrits dans [docs/boutique.md](docs/boutique.md).
 
 ## Les vingt-quatre passages
 

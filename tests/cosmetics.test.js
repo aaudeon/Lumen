@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CATALOGUE, DEFAULT_LOOK, EMPTY_WARDROBE, GEAR_SLOTS, ITEMS, SLOTS,
-  equip, owns, paintCoat, paintSleeve, purchase, resolveLook, spendable,
+  browseCatalogue, equip, owns, paintCoat, paintSleeve, purchase, resolveLook, spendable,
 } from '../src/cosmetics.js';
 
 test('the catalogue is coherent: unique ids, one free item per slot, rising prices', () => {
@@ -124,4 +124,79 @@ test('a look always resolves to a full outfit, whatever is stored', () => {
   assert.equal(resolveLook({ hat: 'cuir' }).hat.id, DEFAULT_LOOK.hat);
   assert.equal(resolveLook({ coat: 'nacre' }).coat.id, DEFAULT_LOOK.coat);
   assert.equal(resolveLook({ light: 'brasero' }).light.id, 'brasero');
+});
+
+test('existing purchases survive the extra slots and a new companion purchase', () => {
+  const old = { owned: ['nacre', 'corail'], spent: 5600, equipped: { hat: 'nacre', cape: 'corail', light: 'torche', coat: 'cuir' } };
+  const progress = { aube: { score: 9000 } }, snapshot = structuredClone(progress);
+  const bought = purchase(old, 'faerie-pet', spendable(progress, old));
+  assert.ok(bought.ok);
+  assert.equal(bought.wardrobe.equipped.hat, 'nacre');
+  assert.equal(bought.wardrobe.equipped.cape, 'corail');
+  assert.equal(bought.wardrobe.equipped.pet, 'faerie-pet');
+  assert.equal(bought.wardrobe.equipped.aura, 'aura-none');
+  assert.equal(spendable(progress, bought.wardrobe), 9000 - 5600 - ITEMS['faerie-pet'].price);
+  assert.deepEqual(progress, snapshot);
+  assert.deepEqual(old.owned, ['nacre', 'corail']);
+});
+
+test('discovery combines accents, ownership, rarity, fresh pieces and affordable prices', () => {
+  assert.equal(browseCatalogue({ query: 'ecarlate' }).items[0].id, 'dragon-coat');
+  const fresh = browseCatalogue({ freshOnly: true, collection: 'astral', slot: 'pet', rarity: 'legendary' });
+  assert.deepEqual(fresh.items.map(item => item.id), ['astral-pet']);
+  const wardrobe = purchase(EMPTY_WARDROBE, 'faerie-pet', 9999).wardrobe;
+  assert.deepEqual(browseCatalogue({ collection: 'faerie', ownership: 'owned', wardrobe }).items.map(item => item.id), ['faerie-pet']);
+  const cheap = browseCatalogue({ collection: 'faerie', ownership: 'affordable', balance: 350, wardrobe });
+  assert.deepEqual(cheap.items.map(item => item.slot).sort(), ['coat', 'trail']);
+  assert.equal(browseCatalogue({ query: 'introuvable', page: 30 }).page, 1);
+  assert.deepEqual(browseCatalogue({ query: 'introuvable' }).items, []);
+});
+
+test('hundreds of future objects stay paged and filters clamp an obsolete page', () => {
+  const items = Array.from({ length: 243 }, (_, i) => ({ ...ITEMS['faerie-pet'], id: `future-${i}`, price: i }));
+  const first = browseCatalogue({ items, pageSize: 6, sort: 'price' });
+  const last = browseCatalogue({ items, pageSize: 6, sort: 'price', page: 200 });
+  assert.equal(first.items.length, 6);
+  assert.equal(first.pages, 41);
+  assert.equal(last.page, 41);
+  assert.equal(last.items.length, 3);
+  assert.equal(last.items.at(-1).id, 'future-242');
+  assert.equal(browseCatalogue({ slot: 'portal', page: 200 }).page, 1);
+});
+
+test('the bestiary is a real menagerie: every familiar has a family and a model', async () => {
+  const { BESTIARY, PET_FAMILIES } = await import('../src/bestiary.js');
+  const { PETS } = await import('../src/pets/index.js');
+  const families = new Set(PET_FAMILIES.map(family => family.id));
+  assert.ok(BESTIARY.length >= 12, 'le joueur a demandé du choix');
+  assert.equal(BESTIARY.length, new Set(BESTIARY.map(item => item.id)).size);
+  for (const item of BESTIARY) {
+    assert.ok(families.has(item.family), `${item.id} n'appartient à aucune famille`);
+    assert.equal(typeof PETS[item.id], 'function', `${item.id} n'a pas de modèle dans src/pets/`);
+    assert.equal(item.slot, 'pet');
+    assert.ok(item.price > 0 && item.name && item.story);
+    assert.ok(Object.values(item.palette).every(colour => typeof colour === 'number'));
+  }
+  // Each family the store offers must actually have something in it.
+  for (const family of PET_FAMILIES) {
+    const members = BESTIARY.filter(item => item.family === family.id);
+    assert.ok(members.length >= 3, `${family.id} n'a que ${members.length} familier(s)`);
+    assert.ok(family.name && family.symbol && family.tagline);
+  }
+  // The four families the player asked for, by name.
+  for (const wanted of ['cats', 'dogs', 'turtles', 'dragons']) {
+    assert.ok(families.has(wanted), `famille manquante : ${wanted}`);
+  }
+});
+
+test('the menagerie is browsable family by family', async () => {
+  const { PET_FAMILIES } = await import('../src/bestiary.js');
+  for (const family of PET_FAMILIES) {
+    const found = browseCatalogue({ slot: 'pet', family: family.id, pageSize: 99 });
+    assert.ok(found.total >= 3, `${family.id} : ${found.total} résultat(s)`);
+    assert.ok(found.items.every(item => item.slot === 'pet' && item.family === family.id));
+  }
+  const everything = browseCatalogue({ slot: 'pet', pageSize: 99 });
+  assert.equal(everything.total, PET_FAMILIES.reduce((sum, family) =>
+    sum + browseCatalogue({ slot: 'pet', family: family.id, pageSize: 99 }).total, 0) + 1, 'plus « sans familier »');
 });

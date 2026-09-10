@@ -43,13 +43,61 @@ export function createExplorerPreview(host, { style, biome = 'jungle' } = {}) {
   const discMaterial = new THREE.MeshStandardMaterial({ color: 0x1a2c2a, roughness: 0.95 });
   const disc = new THREE.Mesh(discGeometry, discMaterial);
   disc.position.y = -0.018;
-  turntable.add(disc);
+  scene.add(disc);
 
   let spin = 0.35;
   let dragging = null;
   let raf = 0;
   let disposed = false;
   let last = performance.now();
+  let walking=false;
+  let focus=null;
+  const petAnchor=explorer.root.getObjectByName('explorer-pet-anchor');
+  const stageOrigin=new THREE.Vector3();
+  const upAxis=new THREE.Vector3(0,1,0);
+  function displaySubject() {
+    const petOnly=focus==='pet' && petAnchor?.children[0]?.children.length>0;
+    for(const child of explorer.root.children) child.visible=!petOnly || child===petAnchor;
+    disc.scale.setScalar(petOnly ? .58 : 1);
+    if(petOnly) {
+      const [x,y,z]=petAnchor.userData.home;
+      // An exhibition has a fixed origin. Only the creature's rig moves here;
+      // the follow-lag belongs on the game board, never on its display plinth.
+      petAnchor.position.set(x,y+(petAnchor.userData.ground?0:.34),z);
+      petAnchor.rotation.set(0,0,0);
+      stageOrigin.set(x,0,z).applyAxisAngle(upAxis,spin);
+      turntable.position.copy(stageOrigin).negate();
+    } else {turntable.position.set(0,0,0);}
+  }
+  function frameCamera() {
+    if(focus==='pet' && petAnchor?.children[0]?.children.length) {
+      const grounded=petAnchor.userData.ground;
+      const center=grounded ? .16 : .30;
+      camera.position.set(0,center+(grounded ? .37 : .46),(grounded ? 1.2 : 1.55)*Math.max(1,1/camera.aspect));
+      camera.lookAt(0,center,0);
+      return;
+    }
+    if(focus) {
+      let target=null;
+      explorer.root.traverse(object=>{if(object.name.startsWith(`gear-${focus}-`))target=object;});
+      if(target?.children.length) {
+        const bounds=new THREE.Box3().setFromObject(target);
+        const center=bounds.getCenter(new THREE.Vector3()),size=bounds.getSize(new THREE.Vector3());
+        const span=Math.max(size.y,size.x/camera.aspect,size.z,.25);
+        const distance=Math.max(focus==='pet' ? .65 : .85,span*2.5);
+        const ground=focus==='aura'||focus==='trail';
+        camera.position.copy(center).add(new THREE.Vector3(0,ground?distance*.85:focus==='pet'?distance*.32:.09,ground?distance*.8:distance));
+        camera.lookAt(center);
+        return;
+      }
+    }
+    const bounds=new THREE.Box3().setFromObject(explorer.root);
+    const size=bounds.getSize(new THREE.Vector3());
+    const narrow=Math.max(1,1/camera.aspect);
+    const distance=Math.max(3.0,size.y*2.5,size.x*2.4*narrow);
+    camera.position.set(0,.83,distance);
+    camera.lookAt(0,.63,0);
+  }
 
   let framed = false;
   function resize() {
@@ -61,6 +109,7 @@ export function createExplorerPreview(host, { style, biome = 'jungle' } = {}) {
     framed = true;
     renderer.setSize(width, height);
     camera.aspect = width / height;
+    frameCamera();
     camera.updateProjectionMatrix();
   }
   const observer = new ResizeObserver(resize);
@@ -86,7 +135,9 @@ export function createExplorerPreview(host, { style, biome = 'jungle' } = {}) {
     last = now;
     if (dragging === null) spin += dt * 0.42;
     turntable.rotation.y = spin;
-    explorer.update(time, dt, { moving: false });
+    explorer.update(time, dt, { moving: walking, distance:walking?dt*.7:0 });
+    displaySubject();
+    if(focus)frameCamera();
     if (!framed) resize();
     if (framed) renderer.render(scene, camera);
     raf = requestAnimationFrame(frame);
@@ -94,17 +145,15 @@ export function createExplorerPreview(host, { style, biome = 'jungle' } = {}) {
   raf = requestAnimationFrame(frame);
 
   return {
-    setStyle(next) { explorer.setStyle(next); },
+    setStyle(next) { explorer.setStyle(next);frameCamera(); },
+    setWalking(next){walking=next;},
     /** Frame the part being tried on; without a slot, back to the full figure. */
     focusSlot(slot) {
-      const framing = {
-        hat: { height: 1.0, distance: 1.5, look: 0.95 },
-        light: { height: 0.66, distance: 2.0, look: 0.55 },
-        cape: { height: 0.74, distance: 2.35, look: 0.62 },
-      }[slot] || { height: 0.72, distance: 2.55, look: 0.62 };
-      camera.position.set(0, framing.height, framing.distance);
-      camera.lookAt(0, framing.look, 0);
+      focus=slot;
+      if(slot==='pet')spin=.45;
       if (slot === 'cape') spin = Math.PI * 0.86;
+      turntable.rotation.y=spin;
+      displaySubject();frameCamera();
     },
     dispose() {
       if (disposed) return;
@@ -119,6 +168,7 @@ export function createExplorerPreview(host, { style, biome = 'jungle' } = {}) {
       discGeometry.dispose();
       discMaterial.dispose();
       renderer.dispose();
+      renderer.forceContextLoss();
       renderer.domElement.remove();
     },
   };

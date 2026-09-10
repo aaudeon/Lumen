@@ -1,4 +1,4 @@
-import { paintCoat, paintSleeve, resolveLook } from './cosmetics.js';
+import { paintCoat, paintSleeve, resolveLook, GEAR_SLOTS } from './cosmetics.js';
 import { buildGear } from './gear.js';
 
 /** Pixel-painted expedition character with a self-contained articulated voxel rig.
@@ -6,7 +6,7 @@ import { buildGear } from './gear.js';
  * `style` names the equipped cosmetics; the textures are repainted in place when
  * it changes, so the wardrobe never rebuilds the rig mid-expedition.
  */
-export function createExplorer({ THREE, style }) {
+export function createExplorer({ THREE, style, effectWorld=null, portalMount=null }) {
   const root = new THREE.Group();
   root.name = 'voxel-explorer';
   const rig = new THREE.Group();
@@ -170,12 +170,32 @@ export function createExplorer({ THREE, style }) {
   const lightSlot = new THREE.Group();
   rightArm.hand.add(lightSlot);
   // Equipment is rebuilt on demand; the rig only keeps the mount points.
-  const worn = { hat: null, cape: null, light: null };
-  const mounts = { hat: hatSlot, cape: capeSlot, light: lightSlot };
+  const worn = Object.fromEntries(GEAR_SLOTS.map(slot=>[slot,null]));
+  const petAnchor = new THREE.Group();
+  petAnchor.name = 'explorer-pet-anchor';
+  root.add(petAnchor);
+  const mounts = { hat: hatSlot, cape: capeSlot, light: lightSlot,pet:petAnchor,aura:root,trail:effectWorld||root,portal:portalMount||root };
+  let petLag = 0;
+  const effectPosition=new THREE.Vector3();
   function fit(slot) {
+    if(worn[slot]?.id===look[slot].id)return;
     worn[slot]?.dispose();
     worn[slot] = buildGear({ THREE, slot, palette: look[slot] });
+    worn[slot].id=look[slot].id;
+    if(slot==='portal') {
+      // The ornament sits in front of the stone arch, clear of its thick pillars.
+      if(portalMount){worn[slot].root.rotation.y=Math.PI/2;worn[slot].root.scale.setScalar(.78);worn[slot].root.position.set(.24,.16,0);}
+      else worn[slot].root.position.z=-.55;
+    }
     mounts[slot].add(worn[slot].root);
+    if (slot === 'pet') {
+      // Placement belongs to the rig; the creature only animates its own body.
+      const spec = worn.pet?.spec || {};
+      petAnchor.userData.home=spec.home || [-.62,0,-.16];
+      petAnchor.userData.ground=!!spec.ground;
+      petAnchor.position.set(...(spec.home || [-.62, 0, -.16]));
+      petAnchor.scale.setScalar(spec.scale || 1);
+    }
   }
 
   function placeLeg(limb, cycle) {
@@ -263,12 +283,29 @@ export function createExplorer({ THREE, style }) {
     });
     worn.cape?.animate?.(time);
     worn.hat?.animate?.(time);
+    worn.light?.animate?.(time);
+    // A familiar trails behind when Lumen sets off, then catches up when he stops.
+    const petSpec = worn.pet?.spec || {};
+    petLag += (movement - petLag) * (1 - Math.exp(-delta * 3.4));
+    const home = petSpec.home || [-.62, 0, -.16];
+    const hover = petSpec.ground ? 0 : .34 + Math.sin(time * 1.5) * .035;
+    petAnchor.position.set(
+      home[0] + Math.sin(time * .7) * .035 * (1 - movement),
+      home[1] + hover,
+      home[2] - petLag * .34 + Math.sin(time * .9) * .02 * (1 - movement));
+    petAnchor.rotation.y = Math.sin(time * .5) * .16 * (1 - movement) - petLag * .1;
+    petAnchor.rotation.z = petSpec.ground ? 0 : Math.sin(time * 1.2) * .05;
+    worn.pet?.animate?.(time, { moving: movement > .12, speed: movement, footfall, dt: delta });
+    worn.aura?.animate?.(time);
+    worn.portal?.animate?.(time);
+    if(effectWorld){root.getWorldPosition(effectPosition);effectWorld.worldToLocal(effectPosition);}else effectPosition.set(0,0,0);
+    worn.trail?.animate?.(time,{footfall,position:effectPosition,showcase:!effectWorld});
     return { footfall, foot };
   }
   function wear() {
     for (const repaint of repaints) repaint();
     shirt.color.set(look.coat.shirt);
-    for (const slot of ['hat', 'cape', 'light']) fit(slot);
+    for (const slot of GEAR_SLOTS) fit(slot);
   }
   wear();
   update(0, 0, { moving: false, progress: 0 });

@@ -111,3 +111,17 @@ remplacer un passage existant.
   leur tracé, pas seulement d’y greffer un cul-de-sac.
 - Les épreuves closent chaque monde ; une autre option serait de les intercaler
   selon leur difficulté plutôt que selon leur date d’arrivée.
+
+## Boutique et personnalisation — ajout du 10 septembre 2026
+
+- [x] Six collections fantaisistes avec silhouettes propres : féerie, cosmos, dragons, automates, corsaires et arcade.
+- [x] Familiers, traces de pas, auras et parures de portail, en plus des vêtements.
+- [x] Grille paginée, vignettes 3D, recherche, rareté, possession, budget et nouveautés.
+- [x] Essayage d'une pièce ou d'un ensemble, rotation, marche et vue de détail.
+- [x] Cabine visible pendant la navigation sur téléphone.
+- [x] Rayon Familiers distinct : 18 compagnons, chats, chiens, tortues, dragons et merveilles.
+- [x] Silhouettes cubiques accordées à Lumen, yeux en pixels, articulations raccordées et démarches propres à chaque animal.
+- [x] Présentation rapprochée des compagnons avec socle fixe et cadrage stable pendant les animations.
+- [x] Compatibilité des anciens achats et portefeuille conservé ; économie fondée sur le choix des pièces.
+
+Bilan et guide d'extension : [docs/boutique.md](docs/boutique.md).

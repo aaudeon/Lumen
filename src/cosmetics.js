@@ -8,6 +8,9 @@
  * never goes down. Spending is tracked apart, and the balance is the difference.
  */
 import { walletTotal } from './score.js';
+import { NEW_ITEMS, COLLECTIONS, RARITIES } from './collections.js';
+import { BESTIARY, PET_FAMILIES } from './bestiary.js';
+export { COLLECTIONS, RARITIES, PET_FAMILIES };
 
 /** Coat texture, 32 x 32 pixels. Shared by the 3D rig and the store swatch. */
 export function paintCoat(rect, coat) {
@@ -29,7 +32,7 @@ export function paintSleeve(rect, coat) {
   rect(coat.sleeveDark, 8, 17, 12, 2);
 }
 
-export const CATALOGUE = [
+const ORIGINAL_CATALOGUE = [
   {
     slot: 'hat', title: 'Couvre-chef', note: 'Chaque modèle a sa propre forme.',
     items: [
@@ -100,7 +103,12 @@ export const CATALOGUE = [
 ];
 
 /** Slots whose item is a mesh, in the order the store shows them. */
-export const GEAR_SLOTS = ['hat', 'cape', 'light'];
+export const GEAR_SLOTS = ['hat', 'cape', 'light', 'pet', 'trail', 'aura', 'portal'];
+const EXTRA_SLOTS=[['pet','Familiers','Un compagnon purement décoratif.'],['trail','Traces de pas','Un sillage qui disparaît doucement.'],['aura','Auras','Un petit monde autour de vos pieds.'],['portal','Portails','Une parure pour la sortie du niveau.']];
+export const CATALOGUE=[...ORIGINAL_CATALOGUE,...EXTRA_SLOTS.map(([slot,title,note])=>({slot,title,note,items:[{id:`${slot}-none`,name:`Sans ${slot==='pet'?'familier':slot==='trail'?'traces':slot==='aura'?'aura':'parure de portail'}`,price:0,story:'Retrouver l’apparence du premier voyage.',palette:{}}]}))].map(group=>({...group,items:[
+  ...group.items.map(item=>({...item,collection:'expedition',rarity:item.price>=4000?'legendary':item.price>=2000?'epic':item.price?'rare':'common'})),
+  ...(group.slot==='pet' ? BESTIARY : NEW_ITEMS.filter(item=>item.slot===group.slot)),
+].sort((a,b)=>a.price-b.price)}));
 export const SLOTS = CATALOGUE.map(group => group.slot);
 export const ITEMS = Object.fromEntries(CATALOGUE.flatMap(group =>
   group.items.map(item => [item.id, { ...item, slot: group.slot }])));
@@ -152,6 +160,19 @@ export function resolveLook(equipped) {
     const chosen = ITEMS[equipped?.[slot]];
     const fallback = ITEMS[DEFAULT_LOOK[slot]];
     const item = chosen && chosen.slot === slot ? chosen : fallback;
-    return [slot, { id: item.id, ...item.palette }];
+    return [slot, { id: item.id, model:item.model, theme:item.theme, ...item.palette }];
   }));
+}
+
+/** Paged discovery remains bounded even with hundreds of future catalogue entries. */
+export function browseCatalogue({collection='all',slot='all',family='all',rarity='all',ownership='all',query='',sort='featured',page=1,pageSize=9,freshOnly=false,wardrobe,balance=0,items=Object.values(ITEMS)}={}) {
+  const fold=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const term=fold(query.trim());
+  const filtered=items.filter(item=>(collection==='all'||item.collection===collection)&&
+    (slot==='all'||item.slot===slot)&&(family==='all'||item.family===family)&&(rarity==='all'||item.rarity===rarity)&&
+    (ownership==='all'||ownership==='owned'&&owns(wardrobe,item.id)||ownership==='missing'&&!owns(wardrobe,item.id)||ownership==='affordable'&&!owns(wardrobe,item.id)&&item.price<=balance)&&
+    (!freshOnly||item.fresh)&&(!term||fold(`${item.name} ${item.story}`).includes(term)));
+  filtered.sort((a,b)=>sort==='price'?a.price-b.price:sort==='rarity'?RARITIES[b.rarity].order-RARITIES[a.rarity].order:sort==='name'?a.name.localeCompare(b.name,'fr'):Number(!!b.fresh)-Number(!!a.fresh)||a.price-b.price);
+  const pages=Math.max(1,Math.ceil(filtered.length/pageSize)),current=Math.min(pages,Math.max(1,page));
+  return {items:filtered.slice((current-1)*pageSize,current*pageSize),total:filtered.length,pages,page:current};
 }

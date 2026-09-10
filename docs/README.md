@@ -1,5 +1,7 @@
 # Bienvenue dans LUMEN
 
+> **Ajout du 10 septembre 2026 :** la refonte de la boutique, ses 80 entrées dont 18 familiers et son économie sont documentées dans [Boutique et collections](boutique.md). Le README racine décrit les commandes actuelles. Les autres documents de rétrodocumentation conservent leurs relevés datés.
+
 Ce document est la porte d'entrée du workspace de rétrodocumentation de **LUMEN — Les chemins oubliés**. Il s'adresse à toute personne qui découvre le dépôt : il dit ce qu'est le projet, quel document lire selon ce qu'on cherche, et par où commencer selon le temps disponible. Il ne contient aucune référence complète — chaque sujet a son document dédié.
 
 ## Ce qu'est LUMEN

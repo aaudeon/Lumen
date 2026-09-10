@@ -1,3 +1,5 @@
+import { buildCreature } from './pets/index.js';
+import { buildFantasy } from './fantasy-gear.js';
 /** Swappable equipment meshes for the explorer: hats, capes, and light sources.
  *
  * Every builder owns its geometries and materials and hands back the hooks the
@@ -257,8 +259,10 @@ export function buildGear({ THREE, slot, palette }) {
   const root = new THREE.Group();
   root.name = `gear-${slot}-${palette?.id || 'default'}`;
   const build = BUILDERS[slot]?.[palette?.id];
-  const outcome = build ? build(tools, root, palette) : undefined;
-  const animate = typeof outcome === 'function' ? outcome : null;
+  const creature = slot === 'pet' ? buildCreature(tools, root, palette) : null;
+  const outcome = creature
+    || (palette?.model ? buildFantasy(tools,root,slot,palette,flameOf) : build ? build(tools, root, palette) : undefined);
+  const animate = typeof outcome === 'function' ? outcome : outcome?.animate || null;
   const fitted = outcome && typeof outcome === 'object' ? outcome : {};
   let light = null;
   if (fitted.lightAt) {
@@ -267,11 +271,14 @@ export function buildGear({ THREE, slot, palette }) {
     light.castShadow = false;
     root.add(light);
   }
+  let disposed=false;
   return {
-    root, light, animate,
+    root, light, animate, spec: fitted,
     flame: fitted.flame?.group || null,
     embers: fitted.flame?.embers || [],
     dispose() {
+      if(disposed)return;
+      disposed=true;
       root.removeFromParent();
       tools.geometries.forEach(value => value.dispose());
       tools.materials.forEach(value => value.dispose());
