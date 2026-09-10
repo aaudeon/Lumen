@@ -189,18 +189,38 @@ Deux gains, cumulés :
   chercher ;
 - une **relique d'un rang au-dessus**, exposée à part dans le carnet.
 
+### La gravure appartient à la pierre
+
+La marque voyage avec la dalle quand elle glisse. L'escalier est donc sous la
+**pierre gravée**, où qu'elle se trouve, et non sous une case fixe.
+
+Cela fait du secret deux gestes au lieu d'un : **repérer** la marque en vue du
+dessus, puis **atteindre** la pierre — qui sera rarement sur le chemin, et qu'il
+faudra amener jusqu'au couloir, ou amener le couloir jusqu'à elle. C'est
+exactement la boucle du jeu, appliquée à une cible que le joueur s'est donnée
+lui-même. Une case fixe n'aurait demandé que de marcher jusqu'à un point connu.
+
+Contraintes d'écriture qui en découlent :
+
+- La pierre gravée doit porter des couloirs : une pierre pleine ne se marche pas.
+- Elle ne doit pas être posée sur le trajet direct de la sortie, sinon on tombe
+  dessus sans avoir rien cherché.
+- Elle doit rester atteignable quel que soit l'ordre des déplacements, ce que le
+  contrôle des reliques sait déjà vérifier — même méthode, autre cible.
+
+**Assez discrète** veut dire : un relief creusé dans la matière même de la dalle,
+sans émission ni contraste de couleur. Elle ne se lit que lorsque la lumière la
+prend à plat, d'où la nécessité de la vue du dessus. À éprouver sur les quatre
+ambiances : la neige et le basalte ne portent pas une gravure comme la mousse.
+
+### Les niveaux choisis
+
+Un ou deux par monde, pris parmi les passages **déjà maîtrisés** — jamais un
+niveau d'introduction. On ne cherche un secret qu'une fois à l'aise avec la
+règle du lieu ; avant cela, l'attention est prise par la mécanique.
+
 ### À préciser lors de la conception
 
-- **Quels niveaux.** Un ou deux par monde, soit quatre à huit passages secrets.
-  Plutôt des niveaux déjà maîtrisés que des niveaux d'introduction : on ne
-  cherche un secret qu'une fois à l'aise avec la règle du lieu.
-- **À quoi ressemble la gravure.** Assez lisible d'en haut pour être trouvée,
-  assez discrète pour ne pas se remarquer de biais. À éprouver sur les quatre
-  ambiances, la neige et le basalte ne portant pas une marque comme la mousse.
-- **La dalle grave-t-elle, ou la case ?** Si la gravure suit la pierre quand elle
-  glisse, l'escalier se déplace avec elle — ce qui ajoute un puzzle. Si elle
-  appartient à la case, l'escalier reste au même endroit. La première option est
-  plus riche, la seconde plus lisible.
 - **Le solveur.** Les indices doivent ignorer l'escalier tant qu'il n'est pas
   découvert, sinon ils le vendent.
 - **La carte.** Le passage secret apparaît-il une fois trouvé, ou reste-t-il
