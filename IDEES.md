@@ -137,3 +137,71 @@ Bilan et guide d'extension : [docs/boutique.md](docs/boutique.md).
 - [x] Relique facultative : la Boussole polaire.
 
 Détails : [docs/boreale.md](docs/boreale.md).
+
+
+## Passages secrets — piste ouverte du 10 septembre 2026
+
+Un ou deux niveaux par biome cachent un **escalier**. L'emprunter mène à un
+passage secret, plus difficile, mieux récompensé. L'escalier n'est pas visible :
+il se découvre.
+
+- [ ] Ajouter une troisième destination au moteur, à côté de l'entrée et du
+      portail : une descente, posée sous une dalle et non sur un bord.
+- [ ] Cacher l'escalier derrière une découverte, sans le signaler sur le plateau.
+- [ ] Écrire quatre à huit passages secrets, un ou deux par monde.
+- [ ] Récompenser la descente plus que la sortie ordinaire.
+
+### Ce que le moteur permet déjà
+
+L'entrée et le portail sont deux sentinelles, `OUTSIDE = -1` et `FINISH = 16`,
+traitées comme des cases par la recherche de chemins. Une descente serait une
+troisième sentinelle du même genre : Lumen l'atteint en marchant sur la dalle
+qui la porte, quand elle est ouverte. La recherche transporte déjà un sens
+d'arrivée pour la glace ; elle saurait aussi porter l'état d'une découverte.
+
+### La découverte : une gravure vue du dessus
+
+Une pierre du plateau porte une gravure sur sa face supérieure, invisible en vue
+isométrique et lisible seulement en basculant la caméra à la verticale. Amener
+Lumen sur cette dalle ouvre l'escalier.
+
+Ce choix ne demande aucune règle nouvelle : la bascule de vue existe déjà, ne
+sert presque à rien, et devient un outil d'exploration. La découverte tient à
+l'observation, pas à un balayage systématique ni à une manipulation arbitraire.
+
+Une **rumeur** l'accompagne : à la sortie d'un passage qui en cache un, le carnet
+note que quelque chose sonnait creux, sans jamais dire où. Un secret que personne
+ne trouve n'est pas un secret, c'est du contenu perdu ; et chercher sans savoir
+si l'on cherche pour rien n'est pas agréable.
+
+### L'escalier n'engage pas
+
+Le passage secret est une salle annexe. Une fois vidé, il rend au portail du
+niveau d'origine, qu'il reste à franchir. On ne perd donc jamais sa partie en
+explorant, ce qui va avec un jeu sans échec ni compte à rebours.
+
+### La récompense
+
+Deux gains, cumulés :
+
+- une **pièce de boutique exclusive**, qu'on ne peut obtenir qu'ainsi — la
+  boutique étant déjà le moteur de progression, c'est ce qui donne envie de
+  chercher ;
+- une **relique d'un rang au-dessus**, exposée à part dans le carnet.
+
+### À préciser lors de la conception
+
+- **Quels niveaux.** Un ou deux par monde, soit quatre à huit passages secrets.
+  Plutôt des niveaux déjà maîtrisés que des niveaux d'introduction : on ne
+  cherche un secret qu'une fois à l'aise avec la règle du lieu.
+- **À quoi ressemble la gravure.** Assez lisible d'en haut pour être trouvée,
+  assez discrète pour ne pas se remarquer de biais. À éprouver sur les quatre
+  ambiances, la neige et le basalte ne portant pas une marque comme la mousse.
+- **La dalle grave-t-elle, ou la case ?** Si la gravure suit la pierre quand elle
+  glisse, l'escalier se déplace avec elle — ce qui ajoute un puzzle. Si elle
+  appartient à la case, l'escalier reste au même endroit. La première option est
+  plus riche, la seconde plus lisible.
+- **Le solveur.** Les indices doivent ignorer l'escalier tant qu'il n'est pas
+  découvert, sinon ils le vendent.
+- **La carte.** Le passage secret apparaît-il une fois trouvé, ou reste-t-il
+  absent pour ne rien divulguer aux curieux du carnet ?
