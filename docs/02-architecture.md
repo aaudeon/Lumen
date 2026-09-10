@@ -485,7 +485,8 @@ Node est déclaré deux fois — le tuple `(22, 12)` dans [start.py:40](../start
 | `Game.history` | Pile d'annulation d'une partie | Oui | **Non** |
 | `localStorage['lumen-session']` | Id de la partie serveur ([App.jsx:105](../src/App.jsx#L105)) | Oui | Oui, mais devient orphelin |
 | `localStorage['lumen-level']` | Dernier `levelId` joué ([App.jsx:106](../src/App.jsx#L106)) | Oui | Oui |
-| `localStorage['lumen-progress']` | `{ [levelId]: { moves, completed } }` ([App.jsx:111](../src/App.jsx#L111)) | Oui | Oui |
+| `localStorage['lumen-progress']` | `{ [levelId]: { moves, completed, relic, score } }` — c'est aussi ce qui déverrouille les niveaux ([App.jsx:111](../src/App.jsx#L111)) | Oui | Oui |
+| `localStorage['lumen-wardrobe']` | Achats, dépenses et tenue équipée | Oui | Oui |
 | État React (`mode`, `view`, `sound`, chronomètre, `screen`) | — | **Non** | Non |
 | Scène 3D (contexte WebGL, dalles, textures) | — | **Non** | Non |
 
@@ -626,13 +627,17 @@ bleeds behind the chrome while the board stays composed in the free area. »
 étroite au grand écran ; au prix d'un couplage invisible via un nom de classe CSS (`.frame-probe`) et
 d'une dichotomie de 36 itérations exécutée à chaque redimensionnement.
 
-### D-H — Progression locale, sans compte, sans déblocage · **attesté**
+### D-H — Progression locale, sans compte, déblocage côté client · **attesté**
 
-*Choix.* Trois clés `localStorage`, aucun état serveur persistant, aucun verrouillage de niveau.
+*Choix.* Quatre clés `localStorage`, aucun état serveur persistant. Le verrouillage des niveaux est une
+règle **du client seul** : `openCount` / `isOpen` ([src/campaign.js](../src/campaign.js)) ne comptent
+que la série de passages terminés en tête de `/api/levels`, et le passage suivant est la frontière.
 
-*Preuve.* « Les chapitres sont libres d'accès. Vos records restent dans ce navigateur. »
-([App.jsx:428](../src/App.jsx#L428)). **Aucune condition de défaite n'existe dans le moteur** : ni vies,
-ni limite de coups, ni chronomètre serveur. `won` est la seule issue.
+*Preuve.* `loadLevel` et `startExpedition` refusent un niveau fermé, et l'interface le grise partout
+(carte, onglets de monde, barre de chapitres, liste des chapitres, carnet). Le serveur, lui, accepte
+toujours `POST /api/game {levelId}` : **le cadenas n'est pas une garantie côté serveur**.
+**Aucune condition de défaite n'existe dans le moteur** : ni vies, ni limite de coups, ni chronomètre
+serveur. `won` est la seule issue.
 
 *Contrepartie.* Chercher une logique de score dans `engine.py` est une perte de temps : le record est
 calculé et stocké **exclusivement** par le client ([App.jsx:110](../src/App.jsx#L110)). `par` n'est qu'un

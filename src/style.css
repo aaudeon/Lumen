@@ -2,7 +2,7 @@
 @import '@fontsource-variable/manrope';
 
 :root{font-family:'DM Sans Variable',sans-serif;color:#e5e9db;background:#13232b;font-synthesis:none;font-weight:400;--gold:#d9bd80;--muted:#91a29f;--line:rgba(178,198,180,.15);--mint:#90c9b1}
-*{box-sizing:border-box}body{margin:0}button,a{-webkit-tap-highlight-color:transparent}button{font:inherit;color:inherit;cursor:pointer}button{border:0;background:none}button:disabled{opacity:.32;cursor:not-allowed}button:focus-visible,a:focus-visible{outline:2px solid var(--gold);outline-offset:5px}button{transition:color .2s,background .2s,opacity .2s,transform .2s}button:not(:disabled):active{transform:translateY(1px)}a{color:inherit;text-decoration:none}svg{flex-shrink:0}button:hover:not(:disabled){color:#fff1cc}p,h1,h2,h3{margin:0}button:disabled:hover{transform:none}
+*{box-sizing:border-box}body{margin:0}button,a{-webkit-tap-highlight-color:transparent}button{font:inherit;color:inherit;cursor:pointer}button{border:0;background:none}button:disabled{opacity:.32;cursor:not-allowed}button:focus-visible,a:focus-visible{outline:2px solid var(--gold);outline-offset:5px}button{transition:color .2s,background .2s,opacity .2s,transform .2s}button:not(:disabled):active{transform:translateY(1px)}a{color:inherit;text-decoration:none}svg{flex-shrink:0}button:hover:not(:disabled){color:#fff1cc}p,h1,h2,h3{margin:0}
 .game-shell{position:relative;min-height:780px;height:100svh;overflow:hidden;background:radial-gradient(ellipse at 70% 37%,#314b47 0%,#20373a 30%,#17292f 57%,#101e28 100%);
  /* Height of the floating bottom chrome, from which the frame's lower edge is derived. */
  --footer-h:30px;--dock-h:74px;--status-y:calc(var(--footer-h) + 6px);--dock-y:calc(var(--status-y) + 32px);
@@ -143,3 +143,8 @@
   .story-panel .counters{display:none}
   .story-panel h1{font-size:17px}
 }
+
+.chapter-tab.locked{opacity:.42}
+.chapter-tab.locked>span{color:#8c9d99;border-color:transparent}
+.level-choice.locked{opacity:.5;border-style:dashed}
+.level-choice.locked .level-numeral,.level-choice.locked svg{color:#8fa699}

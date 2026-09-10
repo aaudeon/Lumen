@@ -29,7 +29,7 @@ Les familiers ne sont plus une case du tableau combinatoire. Un compagnon n'est 
 | Dragons | Dragonneau de braise, Dragon de givre, Wyrm de jade |
 | Merveilles | Les six compagnons venus des collections, remodelés |
 
-Le rayon **Familiers** a son propre onglet, à côté de **Tenues & effets**, et une rangée de familles qui remplace les collections. Y entrer montre le compagnon seul en mouvement dans la cabine. **Pause** montre son comportement au repos ; **Ensemble** le replace auprès de Lumen.
+Le rayon **Familiers** a son propre onglet, à côté de **Tenues & effets**, et une rangée de familles qui remplace les collections. Y entrer montre **votre** compagnon seul en mouvement dans la cabine ; si vous n'en avez aucun d'équipé, la cabine garde votre tenue et la fiche présente un familier qui attend d'être essayé. **Pause** montre son comportement au repos ; **Ensemble** le replace auprès de Lumen.
 
 Les 18 modèles suivent désormais les volumes cubiques de l'aventurier : blocs légèrement chanfreinés, yeux en pixels, carapaces construites par étages et raccords aux genoux. Les silhouettes et animations propres à chaque espèce sont conservées. `src/pets/voxel-shapes.js` fournit les volumes communs sans imposer de squelette commun.
 
@@ -62,7 +62,7 @@ La première ménagerie partageait une seule boucle d'animation : six créatures
 
 L'écran utilise des onglets de collection, une recherche insensible aux accents, des filtres d'emplacement, de rareté et de possession, ainsi qu'une vue « à votre portée ». Le filtre Nouveautés masque les objets historiques. Le tri propose nouveautés, prix, nom et rareté. La pagination est bornée, y compris si un filtre réduit le nombre de résultats.
 
-Un clic ou toucher sélectionne une pièce et l'ajoute à l'essai courant. **Essayer toute la collection** remplit les huit emplacements pour la prévisualisation seulement. **Ma tenue** revient aux objets effectivement équipés. Un achat équipe seulement l'objet sélectionné ; les autres pièces essayées restent temporaires. Fermer la boutique abandonne l'essayage. La touche Échap ferme la fenêtre, le clavier reste dans la boutique et le focus revient au bouton d'ouverture.
+La cabine s'ouvre sur la tenue **réellement équipée**, et la fiche de gauche présente une pièce que vous portez : rien n'est enfilé avant que vous ne le demandiez. Un clic ou toucher sélectionne une pièce et l'ajoute à l'essai courant. **Essayer toute la collection** remplit les huit emplacements pour la prévisualisation seulement. **Ma tenue** revient aux objets effectivement équipés. Un achat équipe seulement l'objet sélectionné ; les autres pièces essayées restent temporaires. Fermer la boutique abandonne l'essayage. La touche Échap ferme la fenêtre, le clavier reste dans la boutique et le focus revient au bouton d'ouverture.
 
 La cabine possède son propre aperçu 3D, avec rotation par glissement, marche et cadrage de détail. Elle reste visible pendant le défilement du catalogue sur téléphone. Les vignettes sont rendues à partir des mêmes modèles : un contexte WebGL temporaire photographie seulement la page visible, puis est libéré. Les images sont mises en cache en mémoire pour les consultations suivantes.
 

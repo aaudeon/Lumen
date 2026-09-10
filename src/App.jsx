@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createGameScene } from './scene.js';
 import { GameAudio } from './audio.js';
 import HomeScreen from './HomeScreen.jsx';
-import { BIOMES, getBiome } from './campaign.js';
+import { BIOMES, frontierLevel, getBiome, isOpen, SAVE_KEYS, SAVE_VERSION, VERSION_KEY } from './campaign.js';
 import { directionalDestination } from './motion.js';
 import { getBoardProfile } from './boards.js';
 import { LABELS, scoreRun, walletTotal } from './score.js';
@@ -41,6 +41,19 @@ function readSaved(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
 }
 function save(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Private browsing can disable storage. */ } }
+function forget() {
+  for (const key of SAVE_KEYS) {
+    try { localStorage.removeItem(key); } catch { /* Private browsing can disable storage. */ }
+  }
+}
+/** A save from an older format is cleared once, before any state reads it. */
+(function migrate() {
+  try {
+    if (Number(localStorage.getItem(VERSION_KEY)) === SAVE_VERSION) return;
+    forget();
+    localStorage.setItem(VERSION_KEY, String(SAVE_VERSION));
+  } catch { /* Private browsing can disable storage. */ }
+})();
 
 function Dialog({ children, onClose, title }) {
   const ref = useRef(null);
@@ -140,6 +153,10 @@ export default function App() {
   }
   async function loadLevel(levelId) {
     if (busyRef.current) return;
+    if (!isOpen(levelsRef.current, progressRef.current, levelId)) {
+      setNotice('Ce passage est encore verrouillé : terminez le précédent pour l’ouvrir.');
+      return false;
+    }
     setWorking(true);
     requestInFlight.current = true;
     setError(''); setModal(null); setSelected(-2); setSlideChoice(-1); setWinDismissed(false); setRunScore(null);
@@ -167,6 +184,7 @@ export default function App() {
   }
   async function startExpedition(levelId) {
     if (busyRef.current) return;
+    if (!isOpen(levelsRef.current, progressRef.current, levelId)) return;
     if (game?.levelId !== levelId || game?.won) {
       if (!await loadLevel(levelId)) return;
     } else if (pauseStarted.current !== null) {
@@ -242,13 +260,16 @@ export default function App() {
         const data = await api('/api/levels');
         if (!alive.current) return;
         setLevels(data.levels);
-        const storedLevel = readSaved('lumen-level', data.levels[0].id);
-        const levelId = data.levels.some(l => l.id === storedLevel) ? storedLevel : data.levels[0].id;
+        const storedLevel = readSaved('lumen-level', null);
+        const levelId = isOpen(data.levels, progressRef.current, storedLevel)
+          ? storedLevel : frontierLevel(data.levels, progressRef.current)?.id;
         let next;
         const savedId = readSaved('lumen-session', null);
         if (savedId) {
           try { next = await api(`/api/game?id=${encodeURIComponent(savedId)}`); } catch { /* Sessions expire when Python restarts. */ }
         }
+        // A session kept from before a reset can sit on a passage that is locked again.
+        if (next && !isOpen(data.levels, progressRef.current, next.levelId)) next = null;
         if (!next) next = await api('/api/game', { levelId });
         if (!alive.current) return;
         requestInFlight.current = false;
@@ -384,12 +405,18 @@ export default function App() {
     setWardrobe(next);
     save('lumen-wardrobe', next);
   }
+  /** Start over as a brand-new traveller. Every saved key goes, then the page reloads:
+   *  the server hands out a fresh session, and the campaign reopens at passage one. */
+  function resetAccount() {
+    forget();
+    location.reload();
+  }
   const nextLevel = levels[chapter + 1];
   const nextJourney = nextLevel ? (nextLevel.biome === biome.id ? 'Poursuivre le voyage' : getBiome(nextLevel.biome).arrival) : 'Retrouver la carte';
   const hoverText = hazardText || (hovered === game?.hero ? 'Dalle occupée · déplacement verrouillé' : hovered === 16 ? 'Le portail de lumière · sortie' : hovered >= 0 ? `Ligne ${Math.floor(hovered / 4) + 1} · colonne ${hovered % 4 + 1}${!game?.tiles[hovered] ? ' · vide disponible' : game?.slidable.includes(hovered) ? ' · peut glisser' : game?.reachable.includes(hovered) ? ' · chemin accessible' : ''}` : 'Glissez pour tourner · molette ou pincement pour zoomer');
 
   return <>
-    {screen === 'home' && <HomeScreen levels={levels} progress={progress} currentGame={game} busy={busy} error={error} onStart={startExpedition} onSound={toggleSound} sound={sound} wardrobe={wardrobe} credits={credits} onBuy={buyCosmetic} onEquip={equipCosmetic}/>}
+    {screen === 'home' && <HomeScreen levels={levels} progress={progress} currentGame={game} busy={busy} error={error} onStart={startExpedition} onSound={toggleSound} sound={sound} wardrobe={wardrobe} credits={credits} onBuy={buyCosmetic} onEquip={equipCosmetic} onReset={resetAccount}/>}
     <main className="game-shell" data-biome={biome.id} hidden={screen !== 'game'}>
     <div className="grain" aria-hidden="true" />
     <header className="topbar">
@@ -398,10 +425,13 @@ export default function App() {
         <span>LUMEN<small>LES CHEMINS OUBLIÉS</small></span>
       </a>
       <nav className="chapter-nav" aria-label="Chapitres">
-        {worldLevels.map(item => <button key={item.id} disabled={busy} className={`chapter-tab ${game?.levelId === item.id ? 'active' : ''}`} onClick={() => loadLevel(item.id)} aria-label={`Niveau ${item.chapter} : ${item.name}`} aria-current={game?.levelId === item.id ? 'step' : undefined}>
-          <span>{progress[item.id]?.completed ? <Icon name="check" size={14}/> : String(item.biomeLevel).padStart(2, '0')}</span>
-          <i />
-        </button>)}
+        {worldLevels.map(item => {
+          const shut = !isOpen(levels, progress, item.id);
+          return <button key={item.id} disabled={busy || shut} className={`chapter-tab ${game?.levelId === item.id ? 'active' : ''} ${shut ? 'locked' : ''}`} onClick={() => loadLevel(item.id)} aria-label={`Niveau ${item.chapter} : ${item.name}${shut ? ', verrouillé' : ''}`} aria-current={game?.levelId === item.id ? 'step' : undefined}>
+            <span>{shut ? <Icon name="lock" size={13}/> : progress[item.id]?.completed ? <Icon name="check" size={14}/> : String(item.biomeLevel).padStart(2, '0')}</span>
+            <i />
+          </button>;
+        })}
         <span className="chapter-count">{String(chapter + 1).padStart(2, '0')} <em>/ {String(levels.length || 15).padStart(2, '0')}</em></span>
       </nav>
       <div className="top-actions">
@@ -514,8 +544,11 @@ export default function App() {
     </Dialog>}
     {modal === 'levels' && <Dialog onClose={closeModal} title="Choisir un chapitre">
       <p className="eyebrow">LES CHEMINS OUBLIÉS</p><h2>Trois mondes.<br/>{levels.length || 24} passages.</h2><p className="dialog-intro">De la canopée aux profondeurs, puis jusqu’au cœur du volcan. Chaque monde garde ses épreuves les plus récentes pour la fin.</p>
-      <div className="level-list">{BIOMES.map(world => <React.Fragment key={world.id}><h3 className="level-world-heading">{world.symbol} {world.name} · monde {world.world}</h3>{levels.filter(item => item.biome === world.id).map(item => <button className={`level-choice ${game?.levelId === item.id ? 'current' : ''}`} key={item.id} disabled={busy} onClick={() => loadLevel(item.id)}><span className="level-numeral">{String(item.chapter).padStart(2, '0')}</span><span><strong>{item.name}</strong><small>{item.difficulty} · passage {item.biomeLevel} / {levels.filter(other => other.biome === item.biome).length}{item.relicName ? ` · ${progress[item.id]?.relic ? '✦' : '✧'} ${item.relicName}` : ''}</small></span><Icon name={progress[item.id]?.completed ? 'check' : 'arrow'} size={22}/></button>)}</React.Fragment>)}</div>
-      <p className="dialog-footnote">Les chapitres sont libres d’accès. Vos records restent dans ce navigateur.</p>
+      <div className="level-list">{BIOMES.map(world => <React.Fragment key={world.id}><h3 className="level-world-heading">{world.symbol} {world.name} · monde {world.world}</h3>{levels.filter(item => item.biome === world.id).map(item => {
+        const shut = !isOpen(levels, progress, item.id);
+        return <button className={`level-choice ${game?.levelId === item.id ? 'current' : ''} ${shut ? 'locked' : ''}`} key={item.id} disabled={busy || shut} onClick={() => loadLevel(item.id)}><span className="level-numeral">{String(item.chapter).padStart(2, '0')}</span><span><strong>{item.name}</strong><small>{shut ? `Verrouillé · terminez le niveau ${String(item.chapter - 1).padStart(2, '0')}` : `${item.difficulty} · passage ${item.biomeLevel} / ${levels.filter(other => other.biome === item.biome).length}${item.relicName ? ` · ${progress[item.id]?.relic ? '✦' : '✧'} ${item.relicName}` : ''}`}</small></span><Icon name={shut ? 'lock' : progress[item.id]?.completed ? 'check' : 'arrow'} size={22}/></button>;
+      })}</React.Fragment>)}</div>
+      <p className="dialog-footnote">Les passages s’ouvrent l’un après l’autre : terminez un niveau pour déverrouiller le suivant. Vos records restent dans ce navigateur.</p>
     </Dialog>}
   </main></>;
 }

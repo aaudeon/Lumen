@@ -153,7 +153,7 @@ Ce que l'arrêt détruit et ce qu'il conserve :
 | Donnée | Survit à l'arrêt ? | Pourquoi |
 |---|---|---|
 | Parties en cours | **Non** | Le registre `server.games` est un dictionnaire en mémoire du processus ([backend/server.py:27](../backend/server.py#L27)) |
-| Niveaux terminés, records, dernier niveau joué | **Oui** | Trois clés de `localStorage` du navigateur : `lumen-session`, `lumen-level`, `lumen-progress` ([src/App.jsx:102-110](../src/App.jsx#L102)) |
+| Niveaux terminés, records, dernier niveau joué, garde-robe | **Oui** | Quatre clés de `localStorage` du navigateur, listées par `SAVE_KEYS` ([src/campaign.js](../src/campaign.js)) : `lumen-session`, `lumen-level`, `lumen-progress`, `lumen-wardrobe`. Le carnet d'expédition les efface toutes d'un coup (« Recommencer l'aventure à zéro ») |
 | `dist/`, `node_modules/`, `work/` | **Oui** | Fichiers sur disque, jamais nettoyés par le lanceur |
 
 Au rechargement de la page, le client redemande sa session (`GET /api/game?id=...`), reçoit 404, avale silencieusement l'erreur et crée une partie neuve ([src/App.jsx:216](../src/App.jsx#L216)). Les records, eux, réapparaissent puisqu'ils vivent côté navigateur.

@@ -20,3 +20,44 @@ export const BIOMES = [
 ];
 
 export const getBiome = id => BIOMES.find(biome => biome.id === id) || BIOMES[0];
+
+/** The campaign opens one passage at a time: a level needs the previous one finished.
+ *
+ * `levels` arrives from the server already in chapter order, so the run of
+ * finished passages at the front of that list is exactly what has been earned.
+ * The passage right after that run is the frontier — open, but not yet done.
+ */
+export function openCount(levels = [], progress = {}) {
+  let open = 0;
+  while (open < levels.length && progress?.[levels[open].id]?.completed) open += 1;
+  return Math.min(open + 1, levels.length);
+}
+
+export function isOpen(levels, progress, levelId) {
+  const index = (levels || []).findIndex(level => level.id === levelId);
+  return index >= 0 && index < openCount(levels, progress);
+}
+
+/** The passage that has to be finished before `levelId` opens, if any. */
+export function unlockedBy(levels, levelId) {
+  const index = (levels || []).findIndex(level => level.id === levelId);
+  return index > 0 ? levels[index - 1] : null;
+}
+
+/** Where to send a traveller who has no valid destination in mind: the frontier. */
+export function frontierLevel(levels = [], progress = {}) {
+  return levels[openCount(levels, progress) - 1] || levels[0];
+}
+
+/** The keys this browser keeps. Clearing them all is starting over from scratch. */
+export const SAVE_KEYS = ['lumen-progress', 'lumen-wardrobe', 'lumen-session', 'lumen-level'];
+
+/** Save format, and where the browser remembers which one it holds.
+ *
+ * Bumped when a change makes older saves meaningless, and the client then wipes them
+ * once on the next load. Version 2 is the arrival of the padlocks: progression is now
+ * a chain, so a save that finished passages out of order describes a campaign state
+ * that can no longer be reached — points earned beyond a locked passage included.
+ */
+export const SAVE_VERSION = 2;
+export const VERSION_KEY = 'lumen-save-version';

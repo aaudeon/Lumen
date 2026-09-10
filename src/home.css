@@ -55,3 +55,24 @@
 /* Entry point; the boutique itself owns shop.css. */
 .home-shop-open{margin-right:14px}
 @media(max-width:860px){.home-shop-open{margin-right:0}}
+
+/* Progression : les passages s'ouvrent l'un apres l'autre, et un cadenas le dit. */
+.lock-mark{position:relative;display:inline-block;vertical-align:middle;width:13px;height:10px;margin-top:4px;border-radius:2px;background:currentColor}
+.lock-mark:before{content:'';position:absolute;left:50%;bottom:100%;transform:translateX(-50%);width:9px;height:6px;border:2px solid currentColor;border-bottom:0;border-radius:5px 5px 0 0}
+.lock-mark:after{content:'';position:absolute;left:50%;top:3px;width:2px;height:4px;margin-left:-1px;border-radius:1px;background:#12241fcc}
+.map-stop.locked{opacity:.62}
+.map-stop.locked .map-stop-number{background:linear-gradient(145deg,#4d5a52,#2b342f);border-color:#93a08f80;color:#ccd3c1;box-shadow:0 4px 0 #1b241f,0 8px 18px #0b171260}
+.map-stop.locked .map-stop-caption{background:#0f211ec2;border-color:#9aa89230}
+.map-stop.locked .map-stop-caption strong{color:#adb8a5}
+.map-stop.locked .stop-locked{font-size:8px;font-style:normal;color:#bcb58e}
+.biome-tabs button.locked{opacity:.5}
+.biome-tabs button.locked .lock-mark{width:11px;height:9px;color:#c3cbb7}
+.journal-levels article.locked{opacity:.5}
+.journal-levels article.locked>span{color:#c3cbb7}
+.journal-reset{margin-top:24px;padding-top:20px;border-top:1px solid #a9bb9526}
+.journal-reset p{font-size:10px;line-height:1.8;color:#d9aaa1}
+.journal-reset-open{display:flex;align-items:center;gap:9px;font-size:10px;color:#b9c5a4}
+.journal-reset-open span{font-size:15px;color:#cab97f}
+.journal-reset-actions{display:flex;gap:10px;margin-top:15px}
+.journal-reset-actions button{font-size:10px;padding:9px 15px;border-radius:5px;border:1px solid #a0b19040;color:#c6cfb4}
+.journal-reset-actions .journal-reset-go{background:#5c332e;border-color:#cf8a7f5c;color:#f4d8cf}

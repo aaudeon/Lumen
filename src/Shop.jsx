@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CATALOGUE, COLLECTIONS, DEFAULT_LOOK, ITEMS, RARITIES, browseCatalogue, owns } from './cosmetics.js';
+import { CATALOGUE, COLLECTIONS, DEFAULT_LOOK, ITEMS, RARITIES, SLOTS, browseCatalogue, owns } from './cosmetics.js';
 import { PET_FAMILIES } from './bestiary.js';
 import { walletTotal } from './score.js';
 import { createExplorerPreview } from './preview.js';
@@ -15,6 +15,11 @@ const originOf = piece => (piece.slot === 'pet' && petFamilyById[piece.family])
   || { id: 'bestiaire', name: 'Le bestiaire', symbol: '❉', color: '#dfc88f' };
 const slotName = Object.fromEntries(CATALOGUE.map(group => [group.slot, group.title]));
 const ensemble = collection => Object.fromEntries(Object.values(ITEMS).filter(item => item.collection === collection && item.fresh).map(item => [item.slot, item.id]));
+/** The piece the store opens on: one the explorer actually wears, so the card on the left
+ *  and the figure above it tell the same story. A bought piece if there is one, else the
+ *  hat of the first day. */
+const wornPiece = equipped => (SLOTS.map(slot => ITEMS[equipped[slot]]).find(piece => piece?.price > 0)
+  || ITEMS[equipped.hat] || ITEMS[DEFAULT_LOOK.hat]).id;
 
 function ExplorerStage({ look, slot, walking, biome }) {
   const host = useRef(null), view = useRef(null);
@@ -31,18 +36,20 @@ function ExplorerStage({ look, slot, walking, biome }) {
 }
 
 export default function Shop({ wardrobe, credits, progress, biome, onBuy, onEquip, onClose }) {
+  const equipped = useMemo(() => ({ ...DEFAULT_LOOK, ...wardrobe?.equipped }), [wardrobe?.equipped]);
   const [collection, setCollection] = useState('faerie');
   // The menagerie gets its own room: families of creatures, not collections of clothes.
   const [bestiary, setBestiary] = useState(false), [petFamily, setPetFamily] = useState('all');
   const [slot, setSlot] = useState('all'), [rarity, setRarity] = useState('all');
   const [ownership, setOwnership] = useState('all'), [query, setQuery] = useState('');
   const [sort, setSort] = useState('featured'), [freshOnly, setFreshOnly] = useState(false);
-  const [page, setPage] = useState(1), [selected, setSelected] = useState('faerie-pet');
-  const [trial, setTrial] = useState(() => ensemble('faerie'));
+  const [page, setPage] = useState(1), [selected, setSelected] = useState(() => wornPiece(equipped));
+  // The changing room opens on the outfit you are wearing. Nothing is tried on until you
+  // ask for it, and a trial is never saved.
+  const [trial, setTrial] = useState({});
   const [walking, setWalking] = useState(true), [detail, setDetail] = useState(false);
   const [note, setNote] = useState(''), [thumbnails, setThumbnails] = useState({});
   const dialog = useRef(null), close = useRef(null);
-  const equipped = useMemo(() => ({ ...DEFAULT_LOOK, ...wardrobe?.equipped }), [wardrobe?.equipped]);
   const look = useMemo(() => ({ ...equipped, ...trial }), [equipped, trial]);
   const item = ITEMS[selected], family = originOf(item);
   const held = owns(wardrobe, item.id), worn = equipped[item.slot] === item.id;
@@ -84,9 +91,11 @@ export default function Shop({ wardrobe, credits, progress, biome, onBuy, onEqui
     if (bestiary && piece.slot === 'pet') { setDetail(true); setWalking(true); }
   }
   function openBestiary() {
-    const pet = bestiary && item.slot === 'pet' && item.price ? item.id : equipped.pet !== 'pet-none' ? equipped.pet : 'cat-tabby';
+    // Your own companion greets you here. One you do not have waits on its card to be tried.
+    const own = equipped.pet !== 'pet-none';
+    const pet = bestiary && item.slot === 'pet' && item.price ? item.id : own ? equipped.pet : 'cat-tabby';
     setBestiary(true); setPetFamily('all'); setQuery(''); setRarity('all'); setOwnership('all'); setFreshOnly(false);
-    setSelected(pet); setTrial({ pet }); setDetail(true); setWalking(true); setNote('');
+    setSelected(pet); setTrial({}); setDetail(own); setWalking(true); setNote('');
   }
   function choosePetFamily(id) {
     setPetFamily(id);

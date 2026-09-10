@@ -30,7 +30,7 @@ python start.py --port 8766
 
 ## Comment jouer
 
-Le jeu s'ouvre sur une **carte d'expédition** : choisissez l'un des trois mondes, chacun avec sa carte distincte, ses cinq passages d'origine et ses épreuves plus récentes, puis **Explorer**, **Reprendre** ou **Rejouer**. Les passages déjà terminés portent un sceau, la barre de progression compte les niveaux explorés et le **Carnet d'expédition** rassemble vos records. Les vingt-quatre niveaux restent libres d'accès.
+Le jeu s'ouvre sur une **carte d'expédition** : choisissez l'un des trois mondes, chacun avec sa carte distincte, ses cinq passages d'origine et ses épreuves plus récentes, puis **Explorer**, **Reprendre** ou **Rejouer**. Les passages déjà terminés portent un sceau, la barre de progression compte les niveaux explorés et le **Carnet d'expédition** rassemble vos records. Les vingt-quatre niveaux s'ouvrent **l'un après l'autre** : un cadenas marque les passages encore fermés, et terminer un niveau déverrouille le suivant. Le carnet propose aussi de **recommencer l'aventure à zéro**, ce qui efface tout ce que ce navigateur garde.
 
 Le bouton **Carte** du plateau permet de revenir à l'accueil et de reprendre la partie en cours. Le chronomètre et le rendu 3D se mettent en pause dans l'accueil. Après une victoire, poursuivez vers le niveau suivant ou retrouvez votre progression sur la carte : le niveau 10 mène au 11 en Atlantide, et le 17 au 18 dans le volcan.
 
@@ -99,7 +99,7 @@ Depuis le pied de la carte, ouvrez **Le cabinet des merveilles**. Ses **80 entr�
 Les **huit emplacements** sont le couvre-chef, la cape ou les ailes, la lumière tenue, la teinture du manteau, le familier, les traces de pas, l'aura et la parure du portail de sortie. Les pièces ont des formes propres : licorne et dragonnet ailés, lunettes d'aéronaute, astrolabe, automate, poulpe, fantôme pixel, ailes, engrenages… Seule la teinture conserve volontairement la forme du vêtement.
 
 - Choisissez une collection, cherchez un nom ou filtrez par emplacement, rareté, possession ou budget. **Six articles par page** gardent la grille courte ; les vignettes photographient les vrais modèles du jeu.
-- Touchez une pièce pour l'essayer, ou **Essayer toute la collection** pour porter un ensemble. Vous pouvez mélanger plusieurs collections. Les essais sont gratuits et ne sont pas sauvegardés.
+- La cabine s'ouvre sur votre tenue équipée. Touchez une pièce pour l'essayer, ou **Essayer toute la collection** pour porter un ensemble. Vous pouvez mélanger plusieurs collections. Les essais sont gratuits et ne sont pas sauvegardés.
 - Faites glisser l'aventurier pour le tourner, faites-le marcher pour voir les animations ou utilisez **Détail** pour observer une pièce. Sur téléphone, la cabine reste visible pendant le défilement du catalogue.
 - **Acheter et équiper** ne concerne que la pièce sélectionnée. **Équiper** remet un objet déjà possédé ; **Ma tenue** restaure l'apparence réellement équipée dans l'aperçu. Fermer la boutique abandonne les essais.
 

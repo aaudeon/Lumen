@@ -118,7 +118,7 @@ Même piège sur les identifiants : [src/boards.js](../src/boards.js) redéclare
 
 ### 4. Deux compteurs, deux unités — et un seul record
 
-`moves` compte les **glissades** de dalles, jamais les pas. `steps` compte les **arêtes marchées**. Seul `moves` sert de record, et ce record est calculé et stocké **exclusivement par le navigateur** : le serveur ne persiste rien. Trois clés de `localStorage` seulement — `lumen-session`, `lumen-level`, `lumen-progress` ([src/App.jsx:105](../src/App.jsx#L105)) — et `lumen-progress` ne contient que `{ moves, completed }`.
+`moves` compte les **glissades** de dalles, jamais les pas. `steps` compte les **arêtes marchées**. Seul `moves` sert de record, et ce record est calculé et stocké **exclusivement par le navigateur** : le serveur ne persiste rien. Quatre clés de `localStorage` seulement, listées par `SAVE_KEYS` ([src/campaign.js](../src/campaign.js)) — `lumen-session`, `lumen-level`, `lumen-progress`, `lumen-wardrobe`. `lumen-progress` porte `{ moves, completed, relic, score }`, et c'est `completed` qui **déverrouille le niveau suivant** : la campagne s'ouvre un passage à la fois, règle tenue par le client seul.
 
 Corollaire : redémarrer le processus Python détruit toutes les parties en cours ; le client absorbe le 404 et crée une partie neuve. Les records, eux, survivent.
 
