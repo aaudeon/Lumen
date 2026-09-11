@@ -41,7 +41,7 @@ Ce que ce fichier fait, dans l'ordre ([Lancer-le-jeu.cmd](../Lancer-le-jeu.cmd))
 Trois conséquences à connaître :
 
 - **Sur une machine équipée du runtime Codex, votre Python personnel n'est jamais utilisé** par le `.cmd`. Pour forcer le vôtre, appelez `python start.py` directement.
-- **Un double-clic ne transmet aucun argument.** Changer de port depuis le `.cmd` est impossible sans passer par un terminal ou créer un raccourci portant l'argument.
+- **Un double-clic ne transmet aucun argument.** Le lanceur essaie automatiquement les ports 8765 à 8784. Pour imposer un port précis, passez par un terminal ou un raccourci portant `--port N`.
 - Le `.cmd` **ne vérifie jamais Node** : un problème de construction n'apparaît que plus tard, dans le message d'erreur de `start.py`.
 
 ## 3. La commande multiplateforme
@@ -62,7 +62,10 @@ Utilisez `python3 start.py` si votre système nomme l'interpréteur `python3` ([
 flowchart TD
     A["python start.py"] --> B{"port_in_use<br/>127.0.0.1:port ?"}
     B -- oui --> C{"/api/health répond<br/>ok:true + name Lumen ?"}
-    C -- non --> X["ERREUR : Le port N est deja utilise.<br/>Relancez avec --port 8766."]
+    C -- non --> P{"Sans --port et<br/>port suivant disponible dans la plage ?"}
+    P -- oui --> N["Essayer le port suivant, jusqu'à 8784"]
+    N --> B
+    P -- non --> X["ERREUR : port imposé occupé<br/>ou plage 8765-8784 épuisée"]
     C -- oui --> D["instance déjà ouverte"]
     B -- non --> D2["aucune instance"]
     D --> E{"--build ou needs_build ?"}
@@ -81,7 +84,7 @@ flowchart TD
 | # | Étape | Code | Durée | Internet |
 |---|---|---|---|---|
 | 1 | Sonde TCP du port, sur `127.0.0.1` et en IPv4 uniquement | [start.py:110-113](../start.py#L110) | ≤ 0,3 s (délai d'attente) | non |
-| 2 | Si le port répond mais n'est pas LUMEN → arrêt immédiat | [start.py:129-131](../start.py#L129) | — | non |
+| 2 | Si le port répond mais n'est pas LUMEN : essayer le suivant jusqu'à 8784 ; arrêt si `--port` est imposé ou si la plage est épuisée | [select_port](../start.py#L116) | Jusqu'à 0,8 s par contrôle HTTP | non |
 | 3 | Décision de reconstruction : `dist/index.html` absent, ou une source plus récente que lui | [start.py:86-98](../start.py#L86) | < 1 s (parcours de `src/` et `public/`) | non |
 | 4 | Création de `work/`, détection de Node puis de npm | [start.py:133-134](../start.py#L133) | < 1 s | non |
 | 5 | `npm ci --no-audit --no-fund` si une dépendance directe manque ou si l'empreinte de `package.json`/`package-lock.json` a changé. Message affiché : « Preparation des dependances (Internet requis la premiere fois)... » | [start.py:73-83](../start.py#L73) | **non mesurée ici** : dépend du réseau (de quelques dizaines de secondes à plusieurs minutes) | **oui** |
@@ -113,7 +116,7 @@ Il y en a trois, plus l'aide fournie par `argparse` ([start.py:117-121](../start
 |---|---|---|
 | `--no-browser` | N'ouvre pas le navigateur | Les deux appels à `webbrowser.open` sont conditionnés ([start.py:143](../start.py#L143) et [:161](../start.py#L161)). L'adresse reste affichée dans la console |
 | `--build` | Force la reconstruction du frontend | `if args.build or needs_build()` ([start.py:132](../start.py#L132)) : **Node et npm deviennent obligatoires même si `dist/` est parfaitement valide** |
-| `--port N` | Change le port local ; défaut **8765** | Refus hors 1..65535 avec « Le port doit etre compris entre 1 et 65535. » et code de sortie 2 ([start.py:122-123](../start.py#L122)) |
+| `--port N` | Impose le port local, sans repli automatique ; sans cette option, recherche de **8765 à 8784** | Refus hors 1..65535 avec « Le port doit etre compris entre 1 et 65535. » et code de sortie 2 ([start.py](../start.py)) |
 | `-h`, `--help` | Aide générée par argparse | Description : « Lancer LUMEN, le prototype de taquin d'aventure. » |
 
 Trois commandes d'exemple, telles qu'elles figurent dans le README ([README.md:23-27](../README.md#L23)) :
@@ -206,7 +209,7 @@ Rien de sauvegardé ne change : c'est la vérification du verrou qui est suspend
 
 | Symptôme | Cause | Remède |
 |---|---|---|
-| `Impossible de lancer LUMEN : Le port 8765 est deja utilise. Relancez avec --port 8766.` | Le port répond mais `/api/health` n'est pas un LUMEN valide ([start.py:129-131](../start.py#L129)). Le conseil « 8766 » est **écrit en dur**, quel que soit le port demandé | Arrêter l'autre logiciel, ou `python start.py --port 8766`. Depuis un double-clic sur le `.cmd`, il faut passer par un terminal |
+| `Le port N est deja utilise` ou `Aucun port disponible entre 8765 et 8784` | Le port imposé appartient à un autre service, ou toute la plage automatique est occupée ([select_port](../start.py#L116)) | Relancer sans `--port` pour le choix automatique, ou imposer un port libre avec `python start.py --port N`. Le double-clic gère automatiquement les conflits dans la plage 8765-8784 |
 | Le port reste occupé alors que la fenêtre du lanceur est fermée | `start.py` a été tué de force : son `finally` n'a pas tourné et `backend/server.py` est resté orphelin (constaté) | Fermer le processus Python restant (`taskkill /PID <pid> /F`, ou le gestionnaire de tâches). Pour l'identifier : `Get-CimInstance Win32_Process` filtré sur `server.py` |
 | La fenêtre s'ouvre puis se referme aussitôt, mais le navigateur s'ouvre | Chemin « instance déjà ouverte » : code de sortie 0, donc pas de `pause` ([start.py:141-145](../start.py#L141), [Lancer-le-jeu.cmd:36](../Lancer-le-jeu.cmd#L36)) | Rien à corriger : le jeu tourne déjà sur ce port. Pour lire les messages, lancer depuis un terminal |
 | `Impossible de lancer LUMEN : Node.js 22.12 ou plus recent, avec npm, est necessaire.` | Node absent, antérieur à 22.12, **ou npm introuvable sous forme de fichier `npm-cli.js`** ([start.py:26-60](../start.py#L26)). Sous Windows, seuls cinq emplacements sont testés et le repli sur le `npm` du PATH est explicitement désactivé (`os.name != "nt"`, [start.py:58](../start.py#L58)) | Installer Node depuis le paquet officiel : il place `node_modules/npm/bin/npm-cli.js` à côté de `node.exe`. Le message parle de Node même quand c'est **npm** qui manque — cas du runtime Codex et des installations à shims (Volta, fnm, scoop, Corepack seul), où `npm --version` fonctionne pourtant. Contournement : lancer `npm run build` à la main, puis `python start.py`, qui ne reconstruira plus |

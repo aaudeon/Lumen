@@ -113,22 +113,35 @@ def port_in_use(port: int) -> bool:
         return connection.connect_ex(("127.0.0.1", port)) == 0
 
 
+def select_port(requested_port: int | None) -> tuple[int, bool]:
+    """Reuse LUMEN or find a nearby port without displacing another program."""
+    candidates = (requested_port,) if requested_port is not None else range(8765, 8785)
+    for port in candidates:
+        if not port_in_use(port):
+            return port, False
+        if health_ok(f"http://127.0.0.1:{port}"):
+            return port, True
+    if requested_port is not None:
+        raise RuntimeError(f"Le port {requested_port} est deja utilise. Relancez sans --port pour choisir un port libre.")
+    raise RuntimeError("Aucun port disponible entre 8765 et 8784. Choisissez un autre port avec --port.")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Lancer LUMEN, le prototype de taquin d'aventure.")
     parser.add_argument("--no-browser", action="store_true", help="Ne pas ouvrir automatiquement le navigateur.")
     parser.add_argument("--build", action="store_true", help="Reconstruire le frontend avant le lancement.")
-    parser.add_argument("--port", type=int, default=8765, help="Port local (par defaut : 8765).")
+    parser.add_argument("--port", type=int, help="Port local impose (par defaut : premier port disponible entre 8765 et 8784).")
     args = parser.parse_args()
-    if not 1 <= args.port <= 65535:
+    if args.port is not None and not 1 <= args.port <= 65535:
         parser.error("Le port doit etre compris entre 1 et 65535.")
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")
-    url = f"http://127.0.0.1:{args.port}"
     process = None
     try:
-        already_running = port_in_use(args.port)
-        if already_running and not health_ok(url):
-            raise RuntimeError(f"Le port {args.port} est deja utilise. Relancez avec --port 8766.")
+        port, already_running = select_port(args.port)
+        url = f"http://127.0.0.1:{port}"
+        if args.port is None and port != 8765:
+            print(f"Port 8765 indisponible : utilisation du port {port}.", flush=True)
         if args.build or needs_build():
             WORK.mkdir(exist_ok=True)
             node, npm = find_node_and_npm()
@@ -145,7 +158,7 @@ def main() -> int:
             return 0
         print("Demarrage du serveur Python...", flush=True)
         process = subprocess.Popen(
-            [sys.executable, str(ROOT / "backend" / "server.py"), "--host", "127.0.0.1", "--port", str(args.port)],
+            [sys.executable, str(ROOT / "backend" / "server.py"), "--host", "127.0.0.1", "--port", str(port)],
             cwd=ROOT,
         )
         deadline = time.monotonic() + 15

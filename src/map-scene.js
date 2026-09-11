@@ -2,14 +2,16 @@ import * as THREE from 'three';
 import { terrainHeight } from './map-layout.js';
 
 const THEMES = {
-  jungle: { low: '#adad79', high: '#496d46', rock: '#72725b', water: '#236b66', leaves: ['#335d40','#50784b','#779956','#9cac69'], light: '#ffebbd' },
-  atlantis: { low: '#d3d3ad', high: '#638f83', rock: '#829f91', water: '#227d8b', leaves: ['#d79894','#e5bca4','#90c5ba','#bd829c'], light: '#d5fff1' },
-  volcano: { low: '#665650', high: '#49434b', rock: '#352f3b', water: '#302d3b', leaves: ['#50434b','#6d5655','#352e3b','#86695d'], light: '#ffd7af' },
-  boreal: { low: '#849daa', high: '#e4ece1', rock: '#71899b', water: '#355f7a', leaves: ['#527a78','#406866','#75908c','#cdded7'], light: '#e4f4ff' },
+  jungle: { low: '#adad79', high: '#496d46', rock: '#72725b', water: '#236b66', leaves: ['#335d40','#50784b','#779956','#9cac69'], light: '#ffebbd', glow: '#ffe1a1', rim: '#a6dfbd' },
+  atlantis: { low: '#d3d3ad', high: '#638f83', rock: '#829f91', water: '#227d8b', leaves: ['#d79894','#e5bca4','#90c5ba','#bd829c'], light: '#d5fff1', glow: '#a8f4ee', rim: '#8edce5' },
+  volcano: { low: '#665650', high: '#49434b', rock: '#352f3b', water: '#302d3b', leaves: ['#50434b','#6d5655','#352e3b','#86695d'], light: '#ffd7af', glow: '#ffb775', rim: '#ef9b82' },
+  boreal: { low: '#849daa', high: '#e4ece1', rock: '#71899b', water: '#355f7a', leaves: ['#527a78','#406866','#75908c','#cdded7'], light: '#e4f4ff', glow: '#c6fff0', rim: '#9cebd0' },
 };
 
 export function createMapScene(canvas, biome, stops, completed, onProject) {
   const theme = THEMES[biome];
+  const animationTime = { value: 0 };
+  const atmosphereMaterials = [];
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(2, Math.max(1.5, devicePixelRatio || 1)));
   renderer.setClearColor(0x000000, 0);
@@ -37,6 +39,9 @@ export function createMapScene(canvas, biome, stops, completed, onProject) {
   const fillLight = new THREE.DirectionalLight('#b4dcd5', .7);
   fillLight.position.set(8, 5, 10);
   scene.add(fillLight);
+  const rimLight = new THREE.DirectionalLight(theme.rim, .8);
+  rimLight.position.set(5, 7, -10);
+  scene.add(rimLight);
 
   let seed = 8719;
   const random = () => { seed = seed * 16807 % 2147483647; return (seed - 1) / 2147483646; };
@@ -63,6 +68,9 @@ export function createMapScene(canvas, biome, stops, completed, onProject) {
   const foliage = new THREE.IcosahedronGeometry(1, 1);
   const pine = new THREE.ConeGeometry(1, 1, 6);
   const column = new THREE.CylinderGeometry(.13, .17, 1, 8);
+  const portalMaterial = material(theme.glow, { emissive: theme.glow, emissiveIntensity: 1.35 });
+  let lavaMaterial;
+  let lavaLight;
 
   // Les sommets partages conservent des normales et des couleurs continues entre les triangles.
   const source = new THREE.PlaneGeometry(22, 19.8, 180, 162);
@@ -105,7 +113,7 @@ export function createMapScene(canvas, biome, stops, completed, onProject) {
 
   const sea = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false,
-    uniforms: { time: { value: 0 }, tint: { value: new THREE.Color(theme.water) }, shoreline: { value: shoreline } },
+    uniforms: { time: animationTime, tint: { value: new THREE.Color(theme.water) }, glint: { value: new THREE.Color(theme.glow) }, shoreline: { value: shoreline } },
     vertexShader: `varying vec2 coordinate; varying vec2 coastCoordinate;
       void main(){
         coordinate=uv;
@@ -113,15 +121,16 @@ export function createMapScene(canvas, biome, stops, completed, onProject) {
         coastCoordinate=worldPosition.xz/vec2(22.,19.8)+.5;
         gl_Position=projectionMatrix*viewMatrix*worldPosition;
       }`,
-    fragmentShader: `uniform float time; uniform vec3 tint; uniform sampler2D shoreline; varying vec2 coordinate; varying vec2 coastCoordinate;
+    fragmentShader: `uniform float time; uniform vec3 tint; uniform vec3 glint; uniform sampler2D shoreline; varying vec2 coordinate; varying vec2 coastCoordinate;
       void main(){
         vec2 point=coordinate*35.;
         float ripple=sin(point.y*7.+sin(point.x*1.6+point.y*.7)*.9-time*.45);
         float crest=smoothstep(.8-fwidth(ripple),1.,ripple)*smoothstep(.25,.95,sin(point.x*2.1+sin(point.y*1.2)));
+        float sparkle=pow(max(0.,sin(point.x*.55+point.y*.8-time*.22)),12.)*crest;
         float coast=smoothstep(.02,.85,texture2D(shoreline,coastCoordinate).r);
         float bounds=smoothstep(0.,.02,coastCoordinate.x)*smoothstep(0.,.02,1.-coastCoordinate.x)
           *smoothstep(0.,.02,coastCoordinate.y)*smoothstep(0.,.02,1.-coastCoordinate.y);
-        gl_FragColor=vec4(tint+vec3(.01,.017,.016)*crest,.28*coast*bounds);
+        gl_FragColor=vec4(tint+vec3(.025,.04,.037)*crest+glint*sparkle*.16,.32*coast*bounds);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }`,
@@ -209,7 +218,7 @@ export function createMapScene(canvas, biome, stops, completed, onProject) {
     }
     for (const side of [-1, 1]) mesh(box, material(stoneColor), origin.clone().add(new THREE.Vector3(side * .3 * scale, 1.05 * scale, 0)), [.2 * scale, .7 * scale, .3 * scale]);
     mesh(box, material(stoneColor), origin.clone().add(new THREE.Vector3(0, 1.44 * scale, 0)), [1.02 * scale, .24 * scale, .55 * scale]);
-    mesh(box, material('#ffdf9e', { emissive: '#ffc271', emissiveIntensity: 1.5 }), origin.clone().add(new THREE.Vector3(0, .9 * scale, .05)), [.22 * scale, .4 * scale, .12]);
+    mesh(box, portalMaterial, origin.clone().add(new THREE.Vector3(0, .9 * scale, .05)), [.22 * scale, .4 * scale, .12]);
   }
   if (biome === 'jungle') {
     sanctuary(535, 205, 1.25);
@@ -233,12 +242,12 @@ export function createMapScene(canvas, biome, stops, completed, onProject) {
       }
     }
   } else if (biome === 'volcano') {
-    const lavaMaterial = material('#ef7434', { emissive: '#ff541a', emissiveIntensity: 1.3, roughness: .3 });
+    lavaMaterial = material('#ef7434', { emissive: '#ff541a', emissiveIntensity: 1.3, roughness: .3 });
     const lava = mesh(new THREE.CircleGeometry(3.5, 72), lavaMaterial, new THREE.Vector3(.33, .13, -.55));
     lava.rotation.x = -Math.PI / 2;
     lava.scale.y = .97;
     lava.castShadow = false;
-    const lavaLight = new THREE.PointLight('#ff7834', 9, 12, 2);
+    lavaLight = new THREE.PointLight('#ff7834', 9, 12, 2);
     lavaLight.position.set(.3, 1.5, -.6);
     scene.add(lavaLight);
     const flow = [];
@@ -266,6 +275,83 @@ export function createMapScene(canvas, biome, stops, completed, onProject) {
     batch.receiveShadow = true;
     scene.add(batch);
   }
+
+  // Un seul nuage GPU : les particules suivent le relief et s'effacent avant de reboucler.
+  const particlePositions = [];
+  const particlePhases = [];
+  const particleSizes = [];
+  for (let attempt = 0; attempt < 320 && particlePhases.length < 64; attempt++) {
+    const horizontal = 75 + random() * 850;
+    const vertical = 70 + random() * 780;
+    if (groundAt(horizontal, vertical) < .05) continue;
+    const point = positionAt(horizontal, vertical, .2);
+    particlePositions.push(point.x, point.y, point.z);
+    particlePhases.push(random());
+    particleSizes.push(2.5 + random() * 3);
+  }
+  const particleGeometry = new THREE.BufferGeometry();
+  particleGeometry.setAttribute('position', new THREE.Float32BufferAttribute(particlePositions, 3));
+  particleGeometry.setAttribute('phase', new THREE.Float32BufferAttribute(particlePhases, 1));
+  particleGeometry.setAttribute('size', new THREE.Float32BufferAttribute(particleSizes, 1));
+  const particleMaterial = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    uniforms: {
+      time: animationTime, tint: { value: new THREE.Color(biome === 'boreal' ? '#e1f6ff' : theme.glow) },
+      pixelRatio: { value: renderer.getPixelRatio() }, kind: { value: ['jungle', 'atlantis', 'volcano', 'boreal'].indexOf(biome) },
+    },
+    vertexShader: `uniform float time; uniform float pixelRatio; uniform float kind;
+      attribute float phase; attribute float size; varying float visibility;
+      void main(){
+        float cycle=fract(phase+time*(kind==2.?.095:.045));
+        vec3 drift=position;
+        drift.x+=sin(time*.3+phase*31.)*.22;
+        drift.z+=cos(time*.24+phase*19.)*.16;
+        drift.y+=(kind==3.?1.-cycle:cycle)*2.2;
+        visibility=smoothstep(0.,.15,cycle)*smoothstep(0.,.2,1.-cycle)*(.65+.25*sin(phase*43.+time*1.2));
+        gl_Position=projectionMatrix*modelViewMatrix*vec4(drift,1.);
+        gl_PointSize=size*pixelRatio;
+      }`,
+    fragmentShader: `uniform vec3 tint; uniform float kind; varying float visibility;
+      void main(){
+        float radius=length(gl_PointCoord-.5);
+        float light=1.-smoothstep(.06,.24,radius)+(1.-smoothstep(.12,.5,radius))*.25;
+        if(kind==1.) light=(1.-smoothstep(.035,.1,abs(radius-.28)))*.65;
+        gl_FragColor=vec4(tint,light*visibility);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  });
+  atmosphereMaterials.push(particleMaterial);
+  const particles = new THREE.Points(particleGeometry, particleMaterial);
+  particles.frustumCulled = false;
+  scene.add(particles);
+
+  if (biome === 'boreal') {
+    const auroraMaterial = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      uniforms: { time: animationTime },
+      vertexShader: `varying vec2 coordinate;
+        void main(){coordinate=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+      fragmentShader: `uniform float time; varying vec2 coordinate;
+        void main(){
+          float ribbon=.36+sin(coordinate.x*7.+time*.16)*.12+sin(coordinate.x*13.-time*.1)*.035;
+          float veil=exp(-pow((coordinate.y-ribbon)*5.,2.));
+          float folds=.55+.45*sin(coordinate.x*55.+time*.2+coordinate.y*5.);
+          float edge=smoothstep(0.,.14,coordinate.x)*smoothstep(0.,.14,1.-coordinate.x)
+            *smoothstep(0.,.12,coordinate.y)*smoothstep(0.,.25,1.-coordinate.y);
+          vec3 tint=mix(vec3(.38,.86,.72),vec3(.42,.67,.92),coordinate.y);
+          gl_FragColor=vec4(tint,veil*(.12+folds*.1)*edge);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`,
+    });
+    atmosphereMaterials.push(auroraMaterial);
+    const aurora = new THREE.Mesh(new THREE.PlaneGeometry(19, 4.4), auroraMaterial);
+    aurora.position.set(0, 2.8, -7.4);
+    aurora.renderOrder = -1;
+    scene.add(aurora);
+  }
+
   const anchors = stops.map(stop => positionAt(stop.x, stop.y, .2));
   for (const anchor of anchors) {
     const platform = mesh(new THREE.CylinderGeometry(.31, .38, .12, 12), material('#d4c9a0'), anchor.clone().add(new THREE.Vector3(0, -.1, 0)));
@@ -277,7 +363,7 @@ export function createMapScene(canvas, biome, stops, completed, onProject) {
     if (!width || !height) return;
     renderer.setSize(width, height, false);
     const aspect = width / height;
-    const halfWidth = Math.max(12.2, 9.5 * aspect);
+    const halfWidth = Math.max(11.3, 8.75 * aspect);
     camera.left = -halfWidth;
     camera.right = halfWidth;
     camera.top = halfWidth / aspect + .4;
@@ -296,21 +382,43 @@ export function createMapScene(canvas, biome, stops, completed, onProject) {
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
   let frame;
   let previousTime = 0;
+  let elapsed = 0;
   function animate(time) {
+    if (document.hidden || motion.matches) return;
     frame = requestAnimationFrame(animate);
-    if (document.hidden || motion.matches || time - previousTime < 40) return;
+    if (time - previousTime < 40) return;
+    if (previousTime) elapsed += Math.min((time - previousTime) / 1000, .1);
     previousTime = time;
-    sea.uniforms.time.value = time / 1000;
+    animationTime.value = elapsed;
+    portalMaterial.emissiveIntensity = 1.35 + Math.sin(elapsed * 1.3) * .18;
+    finishedMaterial.emissiveIntensity = .15 + Math.sin(elapsed * .8) * .06;
+    rimLight.intensity = .8 + Math.sin(elapsed * .35) * .12;
+    if (lavaMaterial) {
+      const pulse = Math.sin(elapsed * 1.5) * .16 + Math.sin(elapsed * 3.7) * .05;
+      lavaMaterial.emissiveIntensity = 1.3 + pulse;
+      lavaLight.intensity = 9 + pulse * 8;
+    }
     renderer.render(scene, camera);
   }
-  frame = requestAnimationFrame(animate);
+  // En arriere-plan ou en mouvement reduit, aucune boucle de rendu ne reste active.
+  function syncMotion() {
+    cancelAnimationFrame(frame);
+    previousTime = 0;
+    if (!document.hidden && !motion.matches) frame = requestAnimationFrame(animate);
+  }
+  motion.addEventListener('change', syncMotion);
+  document.addEventListener('visibilitychange', syncMotion);
+  syncMotion();
   return () => {
     cancelAnimationFrame(frame);
     observer.disconnect();
+    motion.removeEventListener('change', syncMotion);
+    document.removeEventListener('visibilitychange', syncMotion);
     const geometries = new Set([box, stone, trunk, foliage, pine, column]);
     scene.traverse(object => { if (object.geometry) geometries.add(object.geometry); });
     geometries.forEach(geometry => geometry.dispose());
     materials.forEach(surface => surface.dispose());
+    atmosphereMaterials.forEach(surface => surface.dispose());
     shoreline.dispose();
     sea.dispose();
     sunlight.shadow.dispose();

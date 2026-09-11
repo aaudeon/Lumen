@@ -4,7 +4,7 @@ Un prototype jouable de **taquin d'aventure**, en React, Three.js et Python. Fai
 
 ## Lancer le jeu
 
-**Sous Windows : double-cliquez sur `Lancer-le-jeu.cmd`.** Gardez sa fenêtre ouverte pendant la partie. Le navigateur s'ouvre sur [le jeu local](http://127.0.0.1:8765).
+**Sous Windows : double-cliquez sur `Lancer-le-jeu.cmd`.** Gardez sa fenêtre ouverte pendant la partie. Le navigateur s'ouvre sur le jeu local : port 8765 par défaut, ou un port voisin jusqu'à 8784 si nécessaire. L'adresse choisie est affichée dans la console.
 
 Sur Windows, macOS ou Linux, depuis le dossier du projet :
 
@@ -194,7 +194,7 @@ Il ne touche à **rien** de ce qui est sauvegardé : progression, records, reliq
 
 - **Node ou Python introuvable :** installez les versions indiquées, puis rouvrez le terminal ou le lanceur.
 - **Échec du téléchargement initial :** vérifiez la connexion et relancez. Les messages précis restent affichés dans la fenêtre.
-- **Port occupé :** arrêtez l'autre serveur ou utilisez `--port 8766`. Une instance LUMEN déjà active est réutilisée.
+- **Port occupé :** sans argument, le lanceur essaie automatiquement les ports 8765 à 8784 et réutilise une instance LUMEN rencontrée. Avec `--port N`, seul ce port est essayé : en cas de conflit, relancez sans `--port` ou choisissez un autre port. Aucun autre programme n'est arrêté.
 - **Scène vide :** vérifiez que WebGL et l'accélération graphique sont disponibles dans votre navigateur.
 
 Ce dossier contient le projet source complet et une version construite dans `dist/`. Pour le déplacer vers un autre ordinateur, gardez `dist/` pour jouer avec Python seul ; les dossiers générés `node_modules/`, `work/` et `__pycache__/` peuvent être omis. Sans `dist/`, le lanceur reconstruit le jeu avec Node.js.
