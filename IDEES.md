@@ -145,11 +145,16 @@ Un ou deux niveaux par biome cachent un **escalier**. L'emprunter mène à un
 passage secret, plus difficile, mieux récompensé. L'escalier n'est pas visible :
 il se découvre.
 
-- [ ] Ajouter une troisième destination au moteur, à côté de l'entrée et du
+- [x] Ajouter une troisième destination au moteur, à côté de l'entrée et du
       portail : une descente, posée sous une dalle et non sur un bord.
-- [ ] Cacher l'escalier derrière une découverte, sans le signaler sur le plateau.
-- [ ] Écrire quatre à huit passages secrets, un ou deux par monde.
-- [ ] Récompenser la descente plus que la sortie ordinaire.
+      *Réalisée comme un état de la partie plutôt qu'une sentinelle : la
+      descente est proposée quand Lumen se tient sur la pierre gravée révélée.*
+- [x] Cacher l'escalier derrière une découverte, sans le signaler sur le plateau.
+- [x] Écrire quatre à huit passages secrets, un ou deux par monde.
+      *Six salles : une en jungle, une en Atlantide, deux au volcan, deux en Boréale.*
+- [x] Récompenser la descente plus que la sortie ordinaire.
+      *Un compagnon introuvable en boutique, une relique propre à la salle, et
+      un barème « Secret » supérieur à « Légende ».*
 
 ### Ce que le moteur permet déjà
 
@@ -225,3 +230,22 @@ règle du lieu ; avant cela, l'attention est prise par la mécanique.
   découvert, sinon ils le vendent.
 - **La carte.** Le passage secret apparaît-il une fois trouvé, ou reste-t-il
   absent pour ne rien divulguer aux curieux du carnet ?
+
+### Ce qui a été fait — 11 septembre 2026
+
+- **Le solveur** ignore l'escalier de lui-même : les indices visent le portail, et
+  la pierre gravée est un cul-de-sac à un seul port, qu'aucun couloir ne peut
+  réutiliser — comme les pierres à relique.
+- **La carte** ne montre rien tant que rien n'est trouvé. Un passage terminé qui
+  cache un escalier laisse une rumeur dans le carnet ; une fois l'escalier
+  découvert, la carte marque le passage d'un « ⌄ » et le carnet propose d'y
+  redescendre directement, sans rejouer l'hôte.
+- **La pierre gravée** est choisie par un script qui explore toutes les pierres
+  hors trajet, prouve qu'on peut l'amener à un embranchement du couloir en 4 à
+  12 glissements, puis rejoue le plan complet jusqu'au portail
+  (`SECRET_SPURS` dans `backend/engine.py`).
+- **Les hôtes** : La vigie, L'estran, Le pont des braises, Le passage sacrifié,
+  Le pont des séracs, La couronne boréale — jamais un niveau d'introduction.
+- **Les salles** vivent dans `backend/hidden/`, un module par salle, avec un
+  témoin rejoué à l'import et un contrôle dédié, `tests/secrets.check.py`.
+- Le détail est dans [docs/passages-secrets.md](docs/passages-secrets.md).

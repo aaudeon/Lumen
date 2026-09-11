@@ -200,3 +200,25 @@ test('the menagerie is browsable family by family', async () => {
   assert.equal(everything.total, PET_FAMILIES.reduce((sum, family) =>
     sum + browseCatalogue({ slot: 'pet', family: family.id, pageSize: 99 }).total, 0) + 1, 'plus « sans familier »');
 });
+
+test('a found companion is never sold, and is handed over without opening the purse', async () => {
+  const { grant } = await import('../src/cosmetics.js');
+  const { BESTIARY } = await import('../src/bestiary.js');
+  const found = BESTIARY.filter(item => item.secret);
+  assert.ok(found.length >= 6, 'un compagnon par passage secret');
+  for (const item of found) {
+    assert.equal(item.family, 'secrets');
+    assert.ok(item.price > 0, `${item.id} ne doit pas être offert par défaut`);
+    assert.ok(!owns(EMPTY_WARDROBE, item.id));
+    const refused = purchase(EMPTY_WARDROBE, item.id, 1e9);
+    assert.ok(!refused.ok, `${item.id} ne doit pas s'acheter`);
+    assert.match(refused.reason, /passage secret/);
+    assert.equal(refused.wardrobe.spent, 0);
+    const given = grant(EMPTY_WARDROBE, item.id);
+    assert.ok(owns(given, item.id));
+    assert.equal(given.equipped.pet, item.id, 'le compagnon trouvé est porté aussitôt');
+    assert.equal(given.spent, 0, 'rien n’est débité');
+    assert.equal(grant(given, item.id).owned.length, given.owned.length, 'pas de doublon');
+  }
+  assert.deepEqual(grant(EMPTY_WARDROBE, 'objet-inexistant').owned, []);
+});

@@ -11,6 +11,7 @@ export const PET_FAMILIES = [
   { id: 'turtles', name: 'Tortues', symbol: '⌂', tagline: 'Sans hâte. Elles arriveront.' },
   { id: 'dragons', name: 'Dragons', symbol: '♜', tagline: 'Petits, mais convaincus du contraire.' },
   { id: 'wonders', name: 'Merveilles', symbol: '✧', tagline: 'Les compagnons venus des six collections.' },
+  { id: 'secrets', name: 'Trouvailles', symbol: '⌄', tagline: 'Aucune boutique ne les vend. Ils se trouvent sous une pierre.' },
 ];
 
 /** `collection` keeps legacy familiars inside the collection that sold them. */
@@ -73,15 +74,38 @@ const ROSTER = [
   ['arcade-pet', 'wonders', 'Fantôme malicieux', 1700, 'legendary',
     'Tout en marches d’escalier, il sourit et traverse les murs qu’il n’y a pas.',
     { primary: 0xb47fd0, secondary: 0xd6a1eb, accent: 0xfff0ff, eye: 0x2b2138 }, 'arcade'],
+
+  // Found, never bought: each waits at the bottom of a secret passage. The
+  // price is what the piece is worth, for rarity and display, not a shop tag.
+  ['salamandre', 'secrets', 'Salamandre des racines', 7000, 'legendary',
+    'Elle vit sous la vigie, dans le noir. Sa peau garde une lueur de braise et elle rampe à votre pas.',
+    { primary: 0x2f2a2c, secondary: 0xe86d3a, accent: 0xffc46b, eye: 0xffe9a8 }, undefined, 'vigie'],
+  ['hibou', 'secrets', 'Harfang des aurores', 7000, 'legendary',
+    'Un hibou blanc qui plane sans un bruit et tourne la tête bien plus loin qu’il ne devrait.',
+    { primary: 0xf2f3f0, secondary: 0xb9c1ca, accent: 0x39404c, eye: 0xffd166 }, undefined, 'aurore'],
+  ['meduse', 'secrets', 'Méduse de l’estran', 7000, 'legendary',
+    'Elle flotte au-dessus des pierres, ses filaments à la traîne, et pulse d’une lumière froide.',
+    { primary: 0x9ad8ee, secondary: 0xd6f0fa, accent: 0xff9ec6, eye: 0xffffff }, undefined, 'estran'],
+  ['limace', 'secrets', 'Limace de magma', 7000, 'legendary',
+    'Lente, lourde, incandescente. Elle laisse refroidir derrière elle une croûte qui craque.',
+    { primary: 0x5a2a22, secondary: 0xff6a1e, accent: 0xffc46b, eye: 0xfff3c4 }, undefined, 'braises'],
+  ['phenix', 'secrets', 'Phénix éteint', 7000, 'legendary',
+    'Il ne brûle plus. Il fume encore. Ses cendres se rallument à chaque victoire.',
+    { primary: 0x3a3236, secondary: 0x8a5a4a, accent: 0xff7a33, eye: 0xffd166 }, undefined, 'sacrifice'],
+  ['renard', 'secrets', 'Renard des glaces', 7000, 'legendary',
+    'Il trotte sur la banquise sans jamais glisser, et s’enroule dans sa queue dès que vous vous arrêtez.',
+    { primary: 0xf4f6f8, secondary: 0xd8dde3, accent: 0x6f7684, eye: 0x76c8d8 }, undefined, 'seracs'],
 ];
 
-export const BESTIARY = ROSTER.map(([id, family, name, price, rarity, story, palette, collection]) => ({
+export const BESTIARY = ROSTER.map(([id, family, name, price, rarity, story, palette, collection, secret]) => ({
   id, slot: 'pet', family, name, price, rarity, story,
   // Palettes hold colours only; `resolveLook` supplies the id that selects the model.
   palette,
   creature: id,
   collection: collection || 'bestiaire',
   fresh: true,
+  // The host passage whose secret room hands this companion over; unbuyable.
+  ...(secret ? { secret } : {}),
 }));
 
 export const BESTIARY_BY_FAMILY = PET_FAMILIES.map(family => ({

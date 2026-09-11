@@ -26,11 +26,17 @@ class GameError(ValueError):
 
 @dataclass(frozen=True)
 class Tile:
-    """A stone. ``hazard`` names the single rule painted on it, if any."""
+    """A stone. ``hazard`` names the single rule painted on it, if any.
+
+    ``engraved`` marks the one stone of a passage that hides a staircase. The
+    mark belongs to the stone and slides with it: finding it is half the secret,
+    bringing it within reach is the other half.
+    """
     id: str
     ports: tuple[str, ...]
     hazard: str | None = None
     flow: str | None = None
+    engraved: bool = False
 
 
 MECHANICS = {
@@ -72,6 +78,11 @@ class Level:
     relicName: str = ""
     rule: str = ""
     stepPar: int = 0
+    # Secret passages: a host names the level under its engraved stone; that
+    # level names its host back, and the companion it rewards.
+    secret: str = ""
+    host: str = ""
+    reward: str = ""
 
     def mechanic(self):
         hazards = {tile.hazard for tile in self.tiles if tile and tile.hazard}
@@ -91,6 +102,10 @@ class Level:
                  "biomeLevel", "chapter", "relicName")}
         result["mechanic"] = self.mechanic()
         result["relic"] = self.relic
+        # Whether a passage hides something is public; where it hides it is not.
+        result["secret"] = bool(self.secret)
+        result["host"] = self.host
+        result["reward"] = self.reward
         return result
 
 
@@ -425,6 +440,7 @@ class Game:
         self.tide = HIGH
         self.pulled = ()
         self.relic = False
+        self.revealed = False
         self.hero = OUTSIDE
         self.previous_hero = None
         self.moves = self.steps = 0
@@ -447,7 +463,8 @@ class Game:
     def _save(self, walk_path=None):
         route = tuple(walk_path) if walk_path else None
         self.history.append((self.tiles, self.hero, self.previous_hero, self.moves,
-                             self.steps, route, self.guards, self.tide, self.pulled, self.relic))
+                             self.steps, route, self.guards, self.tide, self.pulled, self.relic,
+                             self.revealed))
 
     def state(self):
         board = self.board
@@ -466,7 +483,7 @@ class Game:
             "id": self.id, "levelId": level.id, "biome": level.biome,
             "size": SIZE, "mechanic": level.mechanic(),
             "tiles": [None if t is None else {"id": t.id, "ports": list(t.ports),
-                       "hazard": t.hazard, "flow": t.flow,
+                       "hazard": t.hazard, "flow": t.flow, "engraved": t.engraved,
                        "heading": board.departure(t) if t.hazard == "current" else None}
                       for t in self.tiles],
             "hero": self.hero, "entry": {"index": 0, "side": "W"},
@@ -487,6 +504,10 @@ class Game:
             "tide": self.tide, "canTide": bool(level.tide) and not won,
             "relic": None if level.relic is None else
                      {"index": level.relic, "name": level.relicName, "taken": self.relic},
+            "descent": None if not level.secret else {
+                "level": level.secret, "revealed": self.revealed,
+                "here": 0 <= self.hero < FINISH and bool(self.tiles[self.hero])
+                        and self.tiles[self.hero].engraved},
             "historyLength": len(self.history), "hint": self.hint,
             "message": self.message, "collapsed": self.collapsed, "weakened": self.weakened,
             **({"walkPath": self.walk_path} if self.walk_path else {}),
@@ -507,7 +528,8 @@ class Game:
             if not self.history:
                 raise GameError("Aucune action à annuler.")
             (self.tiles, self.hero, self.previous_hero, self.moves, self.steps,
-             route, self.guards, self.tide, self.pulled, self.relic) = self.history.pop()
+             route, self.guards, self.tide, self.pulled, self.relic,
+             self.revealed) = self.history.pop()
             self.walk_path = list(reversed(route)) if route else None
             self.collapsed = []
             self.weakened = []
@@ -607,9 +629,14 @@ class Game:
         self.collapsed = report["collapsed"]
         self.weakened = report["weakened"]
         self.relic = had_relic or report["relic"]
+        # Standing on the engraved stone opens the way down, once and for good.
+        opened = (0 <= index < FINISH and self.tiles[index].engraved
+                  and bool(self.level.secret) and not self.revealed)
+        self.revealed = self.revealed or opened
         self.hint = None
         self.message = (
             "Le passage est accompli !" if index == FINISH else
+            "La pierre sonne creux. Un escalier s’ouvre sous vos pieds." if opened else
             f"Vous emportez {self.level.relicName} !" if report["relic"] and not had_relic else
             "Les dalles voisines se lézardent : elles tomberont à la prochaine course." if report["weakened"] else
             "Les dalles s’effondrent derrière Lumen. Utilisez les nouveaux vides !" if report["collapsed"] else
@@ -902,10 +929,49 @@ try:
 except ImportError:
     from boreal import build_boreal_levels
 
-LEVELS = ordered_campaign(hazard_campaign(LEVELS), TRIALS + build_boreal_levels(trial, scramble, replace, FINISH))
-LEVEL_BY_ID = {level.id: level for level in LEVELS}
+try:
+    from .hidden import build_secret_levels
+except ImportError:
+    from hidden import build_secret_levels
 
-WITNESSES = {level.id: witness_cache(level) for level in LEVELS}
+# Secret passages hang under a host's engraved stone. Each entry is
+# (branch cell, anchor stone, side the anchor opens, engraved stone). Stones move
+# during a solution, so both are named by id: the anchor gains a port towards the
+# branch, and the engraved stone — never on the exit route — fits that branch once
+# brought there. Verified by test_secret_stones_are_reachable.
+SECRET_SPURS = {
+    "vigie": (4, "vigie-0", "S", "vigie-5"),
+    "estran": (14, "estran-15", "W", "estran-8"),
+    "braises": (4, "braises-5", "W", "braises-13"),
+    "sacrifice": (10, "sacrifice-8", "E", "sacrifice-2"),
+    "seracs": (11, "seracs-15", "N", "seracs-4"),
+    "aurore": (14, "aurore-15", "W", "aurore-4"),
+}
+
+
+def with_secret(level, secrets):
+    """Name the level's secret, open its branch, and engrave the stone that fits it."""
+    spur = SECRET_SPURS.get(level.id)
+    hidden = next((item for item in secrets if item.host == level.id), None)
+    if spur is None or hidden is None:
+        return level
+    _, anchor, side, stone = spur
+    # Like a relic stone, the engraved stone is a one-port dead end: Lumen can
+    # stand on it, no route can ever reuse it, and puzzles built on a scarcity
+    # of corridors — braises needs its collapse trick — keep their scarcity.
+    tiles = tuple(replace(tile, ports=tuple(sorted({*tile.ports, side}))) if tile and tile.id == anchor
+                  else replace(tile, ports=(OPPOSITE[side],), engraved=True) if tile and tile.id == stone else tile
+                  for tile in level.tiles)
+    return replace(level, tiles=tiles, secret=hidden.id)
+
+
+SECRET_LEVELS = tuple(replace(level, stepPar=demonstrated_steps(level))
+                      for level in build_secret_levels(trial, scramble, replace, FINISH))
+LEVELS = tuple(with_secret(level, SECRET_LEVELS) for level in ordered_campaign(
+    hazard_campaign(LEVELS), TRIALS + build_boreal_levels(trial, scramble, replace, FINISH)))
+LEVEL_BY_ID = {level.id: level for level in LEVELS + SECRET_LEVELS}
+
+WITNESSES = {level.id: witness_cache(level) for level in LEVELS + SECRET_LEVELS}
 
 
 def known_plan(level, board, hero, paths):

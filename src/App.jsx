@@ -7,10 +7,14 @@ import { DEV_MODE, exitDevMode } from './dev-mode.js';
 import { directionalDestination } from './motion.js';
 import { getBoardProfile } from './boards.js';
 import { LABELS, scoreRun, walletTotal } from './score.js';
-import { EMPTY_WARDROBE, DEFAULT_LOOK, equip, purchase, spendable } from './cosmetics.js';
+import { EMPTY_WARDROBE, DEFAULT_LOOK, ITEMS, equip, grant, purchase, spendable } from './cosmetics.js';
 
 /** Dev mode lifts every padlock; otherwise the campaign rules decide. */
-const isOpen = (levels, progress, levelId) => passageOpen(levels, progress, levelId, DEV_MODE);
+const isOpen = (levels, progress, levelId, secrets = []) => {
+  const room = secrets.find(item => item.id === levelId);
+  if (room) return DEV_MODE || Boolean(progress?.[room.host]?.secretFound);
+  return passageOpen(levels, progress, levelId, DEV_MODE);
+};
 
 function Icon({ name, size = 20, ...props }) {
   const paths = {
@@ -107,6 +111,13 @@ export default function App() {
   const [slideChoice, setSlideChoice] = useState(-1);
   const [arrival, setArrival] = useState(null);
   const [runScore, setRunScore] = useState(null);
+  const [secrets, setSecrets] = useState([]);
+  // The staircase card: offered each time Lumen steps onto the revealed stone.
+  const [descent, setDescent] = useState(null);
+  const onStairs = useRef({ gameId: null, here: false });
+  // Where to climb back to after a secret room: the host game, if the server still has it.
+  const returnTo = useRef(null);
+  const secretsRef = useRef([]);
   const [wardrobe, setWardrobe] = useState(() => {
     const saved = readSaved('lumen-wardrobe', EMPTY_WARDROBE);
     return { ...EMPTY_WARDROBE, ...saved, equipped: { ...DEFAULT_LOOK, ...saved?.equipped } };
@@ -125,11 +136,15 @@ export default function App() {
   progressRef.current = progress;
   const levelsRef = useRef(levels);
   levelsRef.current = levels;
-  const level = levels.find(l => l.id === game?.levelId);
+  secretsRef.current = secrets;
+  const passage = id => levelsRef.current.find(item => item.id === id) || secretsRef.current.find(item => item.id === id);
+  const room = secrets.find(item => item.id === game?.levelId);
+  const level = room || levels.find(l => l.id === game?.levelId);
+  const hostLevel = room ? levels.find(l => l.id === room.host) : null;
   const biome = getBiome(level?.biome);
   const boardProfile = getBoardProfile(game?.levelId);
   const worldLevels = levels.filter(item => item.biome === biome.id);
-  const chapter = Math.max(0, levels.findIndex(l => l.id === game?.levelId));
+  const chapter = Math.max(0, levels.findIndex(l => l.id === (room ? room.host : game?.levelId)));
   const closeModal = useCallback(() => setModal(null), []);
 
   function setWorking(value) { busyRef.current = value; setBusy(value); }
@@ -138,7 +153,7 @@ export default function App() {
     save('lumen-session', next.id);
     save('lumen-level', next.levelId);
     if (next.won) {
-      const finished = levelsRef.current.find(item => item.id === next.levelId);
+      const finished = passage(next.levelId);
       const seconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
       const run = finished && scoreRun({ par: finished.par, stepPar: finished.stepPar, moves: next.moves,
         steps: next.steps, seconds, relic: next.relic?.taken, difficulty: finished.difficulty });
@@ -147,20 +162,82 @@ export default function App() {
       if (run) setRunScore({ ...run, seconds, gained: record - (best?.score || 0), record });
       setProgress(previous => {
         const previousBest = previous[next.levelId];
-        const updated = { ...previous, [next.levelId]: { moves: Math.min(previousBest?.moves ?? Infinity, next.moves),
+        const updated = { ...previous, [next.levelId]: { ...previousBest, moves: Math.min(previousBest?.moves ?? Infinity, next.moves),
           completed: true, relic: Boolean(previousBest?.relic || next.relic?.taken),
           score: Math.max(previousBest?.score || 0, run?.total || 0) } };
         save('lumen-progress', updated);
         return updated;
       });
+      // A cleared secret room hands its companion over: found, never bought.
+      if (finished?.reward) {
+        setWardrobe(previous => {
+          const given = grant(previous, finished.reward);
+          save('lumen-wardrobe', given);
+          return given;
+        });
+      }
     }
+    // Stepping onto the revealed stone opens the way down; step off and back on, it is offered again.
+    const here = Boolean(next.descent?.here && next.descent.revealed);
+    const stood = onStairs.current.gameId === next.id && onStairs.current.here;
+    onStairs.current = { gameId: next.id, here };
+    if (!here) setDescent(null);
+    else if (!stood) {
+      setDescent({ gameId: next.id, hostLevelId: next.levelId, level: next.descent.level });
+      setProgress(previous => {
+        if (previous[next.levelId]?.secretFound) return previous;
+        const updated = { ...previous, [next.levelId]: { ...previous[next.levelId], secretFound: true } };
+        save('lumen-progress', updated);
+        return updated;
+      });
+    }
+  }
+  /** Down the stairs. The host game stays on the server, waiting for the climb back. */
+  async function enterSecret() {
+    const stairs = descent;
+    if (!stairs || busyRef.current) return;
+    setDescent(null);
+    setWorking(true);
+    requestInFlight.current = true;
+    setModal(null); setSelected(-2); setSlideChoice(-1); setWinDismissed(false); setRunScore(null);
+    try {
+      const next = await api('/api/game', { levelId: stairs.level });
+      requestInFlight.current = false;
+      returnTo.current = { gameId: stairs.gameId, levelId: stairs.hostLevelId };
+      persist(next); setMode('slide'); setStartedAt(Date.now()); setElapsed(0);
+      setNotice(passage(stairs.level)?.subtitle || 'Sous la pierre, un autre passage.');
+    } catch (err) { setNotice(err.message); }
+    finally { requestInFlight.current = false; setWorking(false); }
+  }
+  /** Back up to the host's portal. If the server forgot the game, the passage restarts. */
+  async function ascend() {
+    // After a reload, or a descent taken from the journal, the host game is unknown: it restarts.
+    const host = passage(live.current.game?.levelId)?.host;
+    const back = returnTo.current || (host ? { gameId: null, levelId: host } : null);
+    if (!back || busyRef.current) return;
+    setWorking(true);
+    requestInFlight.current = true;
+    setModal(null); setSelected(-2); setSlideChoice(-1); setWinDismissed(false); setRunScore(null);
+    try {
+      let next;
+      if (back.gameId) { try { next = await api(`/api/game?id=${encodeURIComponent(back.gameId)}`); } catch { /* Sessions expire when Python restarts. */ } }
+      const resumed = Boolean(next);
+      if (!next) next = await api('/api/game', { levelId: back.levelId });
+      requestInFlight.current = false;
+      returnTo.current = null;
+      onStairs.current = { gameId: next.id, here: true };
+      persist(next); setMode(next.hero >= 0 ? 'walk' : 'slide'); setStartedAt(Date.now()); setElapsed(0);
+      setNotice(resumed ? 'Vous remontez à la lumière. Le portail vous attend.' : 'Vous remontez à la lumière. Le passage s’est refermé derrière vous : le portail reste à rejoindre.');
+    } catch (err) { setNotice(err.message); }
+    finally { requestInFlight.current = false; setWorking(false); }
   }
   async function loadLevel(levelId) {
     if (busyRef.current) return;
-    if (!isOpen(levelsRef.current, progressRef.current, levelId)) {
+    if (!isOpen(levelsRef.current, progressRef.current, levelId, secretsRef.current)) {
       setNotice('Ce passage est encore verrouillé : terminez le précédent pour l’ouvrir.');
       return false;
     }
+    if (!passage(levelId)?.host) returnTo.current = null;
     setWorking(true);
     requestInFlight.current = true;
     setError(''); setModal(null); setSelected(-2); setSlideChoice(-1); setWinDismissed(false); setRunScore(null);
@@ -169,7 +246,7 @@ export default function App() {
       const next = await api('/api/game', { levelId });
       requestInFlight.current = false;
       persist(next); setMode('slide'); setStartedAt(Date.now()); setElapsed(0);
-      setNotice(levels.find(item => item.id === levelId)?.mechanic?.text || 'Déplacez une dalle voisine de la case vide pour ouvrir le chemin.');
+      setNotice(passage(levelId)?.mechanic?.text || passage(levelId)?.subtitle || 'Déplacez une dalle voisine de la case vide pour ouvrir le chemin.');
       return true;
     } catch (err) { setNotice(err.message); return false; }
     finally { requestInFlight.current = false; setWorking(false); }
@@ -188,7 +265,7 @@ export default function App() {
   }
   async function startExpedition(levelId) {
     if (busyRef.current) return;
-    if (!isOpen(levelsRef.current, progressRef.current, levelId)) return;
+    if (!isOpen(levelsRef.current, progressRef.current, levelId, secretsRef.current)) return;
     if (game?.levelId !== levelId || game?.won) {
       if (!await loadLevel(levelId)) return;
     } else if (pauseStarted.current !== null) {
@@ -250,11 +327,17 @@ export default function App() {
     setSlideChoice(-1);
     setNotice(next === 'slide' ? 'Cliquez sur une dalle éclairée, voisine d’un vide.' : 'Choisissez une dalle stable : Lumen suit le trajet sûr et traverse les fissures sans s’arrêter.');
   }
+  /** The space bar and a middle click on the board share this flip and its guards. */
+  function toggleMode() {
+    const current = live.current;
+    if (current.screen !== 'game' || current.modal || current.arrival || busyRef.current) return;
+    switchMode(current.mode === 'slide' ? 'walk' : 'slide');
+  }
   async function toggleSound() {
     const enabled = await audio.current?.setEnabled(!live.current.sound);
     setSound(Boolean(enabled));
   }
-  live.current = { game, mode, modal, sound, selected, slideChoice, act, handleTile, switchMode, toggleSound, screen, arrival, wardrobe };
+  live.current = { game, mode, modal, sound, selected, slideChoice, act, handleTile, switchMode, toggleMode, toggleSound, screen, arrival, wardrobe };
 
   useEffect(() => {
     alive.current = true;
@@ -264,8 +347,10 @@ export default function App() {
         const data = await api('/api/levels');
         if (!alive.current) return;
         setLevels(data.levels);
+        setSecrets(data.secrets || []);
+        secretsRef.current = data.secrets || [];
         const storedLevel = readSaved('lumen-level', null);
-        const levelId = isOpen(data.levels, progressRef.current, storedLevel)
+        const levelId = isOpen(data.levels, progressRef.current, storedLevel, data.secrets)
           ? storedLevel : frontierLevel(data.levels, progressRef.current)?.id;
         let next;
         const savedId = readSaved('lumen-session', null);
@@ -273,12 +358,12 @@ export default function App() {
           try { next = await api(`/api/game?id=${encodeURIComponent(savedId)}`); } catch { /* Sessions expire when Python restarts. */ }
         }
         // A session kept from before a reset can sit on a passage that is locked again.
-        if (next && !isOpen(data.levels, progressRef.current, next.levelId)) next = null;
+        if (next && !isOpen(data.levels, progressRef.current, next.levelId, data.secrets)) next = null;
         if (!next) next = await api('/api/game', { levelId });
         if (!alive.current) return;
         requestInFlight.current = false;
         persist(next);
-        setNotice(data.levels.find(item => item.id === next.levelId)?.mechanic?.text || 'Un passage manque. Faites glisser une dalle vers la case vide.');
+        setNotice(passage(next.levelId)?.mechanic?.text || 'Un passage manque. Faites glisser une dalle vers la case vide.');
         setWorking(false);
       } catch {
         requestInFlight.current = false;
@@ -291,10 +376,12 @@ export default function App() {
       scene.current = createGameScene(sceneHost.current, {
         style: live.current.wardrobe.equipped,
         onTile: index => live.current.handleTile(index),
+        onModeToggle: () => live.current.toggleMode(),
         onHover: setHovered,
         onFootfall: () => audio.current?.play('walk'),
         onCollapse: () => audio.current?.play('collapse'),
         onVictory: () => audio.current?.play('win'),
+        onDescent: () => audio.current?.play('hint'),
         onOrbit: () => setView('free'),
         onReady: () => setReady(true),
         onSettled: () => { if (alive.current && !requestInFlight.current) { setWorking(false); setAnimating(false); } },
@@ -345,7 +432,7 @@ export default function App() {
       const key = event.key.toLowerCase();
       if ([' ', 'enter', 'z', 'r', 'h', 'm', 't', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) event.preventDefault();
       if (event.repeat || busyRef.current) return;
-      if (key === ' ') current.switchMode(current.mode === 'slide' ? 'walk' : 'slide');
+      if (key === ' ') current.toggleMode();
       else if (key === 'z') current.act('undo');
       else if (key === 'r') current.act('reset');
       else if (key === 'h') current.act('hint');
@@ -416,12 +503,15 @@ export default function App() {
     forget();
     location.reload();
   }
-  const nextLevel = levels[chapter + 1];
-  const nextJourney = nextLevel ? (nextLevel.biome === biome.id ? 'Poursuivre le voyage' : getBiome(nextLevel.biome).arrival) : 'Retrouver la carte';
-  const hoverText = hazardText || (hovered === game?.hero ? 'Dalle occupée · déplacement verrouillé' : hovered === 16 ? 'Le portail de lumière · sortie' : hovered >= 0 ? `Ligne ${Math.floor(hovered / 4) + 1} · colonne ${hovered % 4 + 1}${!game?.tiles[hovered] ? ' · vide disponible' : game?.slidable.includes(hovered) ? ' · peut glisser' : game?.reachable.includes(hovered) ? ' · chemin accessible' : ''}` : 'Glissez pour tourner · molette ou pincement pour zoomer');
+  const nextLevel = room ? null : levels[chapter + 1];
+  const secretFound = Boolean(progress[level?.id]?.secretFound);
+  const hostRoom = level?.secret ? secrets.find(item => item.host === level.id) : null;
+  const nextJourney = room ? 'Remonter à la lumière' : nextLevel ? (nextLevel.biome === biome.id ? 'Poursuivre le voyage' : getBiome(nextLevel.biome).arrival) : 'Retrouver la carte';
+  const rewardName = room ? ITEMS[room.reward]?.name || room.reward : '';
+  const hoverText = hazardText || (hovered === game?.hero ? 'Dalle occupée · déplacement verrouillé' : hovered === 16 ? 'Le portail de lumière · sortie' : hovered >= 0 ? `Ligne ${Math.floor(hovered / 4) + 1} · colonne ${hovered % 4 + 1}${!game?.tiles[hovered] ? ' · vide disponible' : game?.slidable.includes(hovered) ? ' · peut glisser' : game?.reachable.includes(hovered) ? ' · chemin accessible' : ''}` : 'Glissez pour tourner · molette ou pincement pour zoomer · clic molette pour changer de mode');
 
   return <>
-    {screen === 'home' && <HomeScreen levels={levels} progress={progress} currentGame={game} busy={busy} error={error} onStart={startExpedition} onSound={toggleSound} sound={sound} wardrobe={wardrobe} credits={credits} onBuy={buyCosmetic} onEquip={equipCosmetic} onReset={resetAccount}/>}
+    {screen === 'home' && <HomeScreen levels={levels} secrets={secrets} progress={progress} currentGame={game} busy={busy} error={error} onStart={startExpedition} onSound={toggleSound} sound={sound} wardrobe={wardrobe} credits={credits} onBuy={buyCosmetic} onEquip={equipCosmetic} onReset={resetAccount}/>}
     <main className="game-shell" data-biome={biome.id} hidden={screen !== 'game'}>
     <div className="grain" aria-hidden="true" />
     <header className="topbar">
@@ -449,7 +539,7 @@ export default function App() {
     </header>
 
     <aside className="story-panel">
-      <p className="eyebrow"><span/> {biome.name.toUpperCase()} · {level?.biomeLevel || 1} / {worldLevels.length || 5}</p>
+      <p className="eyebrow"><span/> {room ? `PASSAGE SECRET · SOUS ${(hostLevel?.name || '').toUpperCase()}` : `${biome.name.toUpperCase()} · ${level?.biomeLevel || 1} / ${worldLevels.length || 5}`}</p>
       <h1>{level?.name || 'Le premier\npassage'}</h1>
       <div className="title-ornament"><i/><Icon name="diamond" size={13}/><i/></div>
       <p className="story">{mechanic?.text || level?.subtitle || biome.description}</p>
@@ -496,7 +586,7 @@ export default function App() {
       <button className="primary-button advance-button" disabled={busy || !canWalk} onClick={() => { setMode('walk'); act('walk', game?.canExit ? 16 : undefined); }}><Icon name="foot" size={20}/><span>{game?.canExit ? 'Vers la sortie' : game?.hero === -1 ? 'Entrer sur le chemin' : 'Avancer'}</span><Icon name="arrow" size={18}/></button>
     </section>
     <div className={`status-line ${game?.hint ? 'with-hint' : ''} ${slideDestinations.length > 1 ? 'choosing-empty' : ''}`} role="status" aria-live="polite"><span className="status-dot"/><p>{notice}</p>{slideDestinations.length > 1 ? <div className="empty-options" aria-label="Choisir le vide">{slideDestinations.map(option => <button key={option.to} disabled={busy} onClick={() => act('slide', slideChoice, option.to)}>Vide {Math.floor(option.to/4)+1},{option.to%4+1}</button>)}<button onClick={() => { setSlideChoice(-1); setSelected(-2); setNotice('Choisissez une autre dalle.'); }}>×</button></div> : game?.hint && !game.won && <button disabled={busy} className="text-button" onClick={() => { setMode(game.hint.type === 'walk' ? 'walk' : 'slide'); act(game.hint.type, game.hint.index, game.hint.to); }}>Jouer cet indice <Icon name="arrow" size={14}/></button>}</div>
-    <footer className="footer"><span>Un petit voyage, une pierre à la fois.</span><p><kbd>ESPACE</kbd> changer de mode <i/><kbd>ENTRÉE</kbd> avancer <i/><kbd>Z</kbd> annuler</p><span>CONCEPT & EXPLORATION <Icon name="diamond" size={12}/></span></footer>
+    <footer className="footer"><span>Un petit voyage, une pierre à la fois.</span><p><kbd>ESPACE</kbd> ou <kbd>CLIC MOLETTE</kbd> changer de mode <i/><kbd>ENTRÉE</kbd> avancer <i/><kbd>Z</kbd> annuler</p><span>CONCEPT & EXPLORATION <Icon name="diamond" size={12}/></span></footer>
 
     {game?.won && !animating && !winDismissed && !modal && <div className="victory-wrap"><section className="victory" role="dialog" aria-label="Chapitre terminé">
       <button className="icon-button victory-close" onClick={() => setWinDismissed(true)} aria-label="Admirer le plateau"><Icon name="close" size={17}/></button>
@@ -504,6 +594,9 @@ export default function App() {
       <div className="victory-symbol"><Icon name="diamond" size={32}/></div>
       <p className="eyebrow">LE PASSAGE EST OUVERT</p><h2>La lumière vous attend.</h2><p>{game.moves} déplacements · {game.steps} pas · {minutes}:{seconds}</p>
       {game.relic && <p className={`victory-relic ${game.relic.taken ? 'found' : ''}`}><Icon name="relic" size={18}/>{game.relic.taken ? `${game.relic.name} rejoint votre carnet.` : `${game.relic.name} dort encore ici. Un détour vous attend.`}</p>}
+      {room && <p className="victory-relic found victory-reward"><Icon name="relic" size={18}/>{rewardName} vous a suivi jusqu’ici. Retrouvez-le dans la ménagerie.</p>}
+      {hostRoom && !secretFound && <p className="victory-rumour">Quelque chose sonnait creux dans ce passage.</p>}
+      {hostRoom && secretFound && <p className="victory-rumour found">{progress[hostRoom.id]?.completed ? `Vous avez exploré ${hostRoom.name}.` : `L’escalier de ${hostRoom.name} vous attend toujours.`}</p>}
       {runScore && <div className="score-card">
         <dl className="score-lines">{['passage', 'moves', 'steps', 'time', 'relic'].filter(part => runScore[part] > 0).map(part =>
           <React.Fragment key={part}><dt>{LABELS[part]}</dt><dd>+{runScore[part]}</dd></React.Fragment>)}</dl>
@@ -513,9 +606,23 @@ export default function App() {
           ? <>+{runScore.gained.toLocaleString('fr-FR')} au portefeuille · <b>{wallet.toLocaleString('fr-FR')} pts</b></>
           : <>Votre record ici reste {runScore.record.toLocaleString('fr-FR')} · portefeuille <b>{wallet.toLocaleString('fr-FR')} pts</b></>}</p>
       </div>}
-      <button disabled={busy} className="primary-button" onClick={() => nextLevel ? loadLevel(nextLevel.id) : returnToMap()}>{nextJourney}<Icon name="arrow" size={18}/></button>
+      <button disabled={busy} className="primary-button" onClick={() => room ? ascend() : nextLevel ? loadLevel(nextLevel.id) : returnToMap()}>{nextJourney}<Icon name="arrow" size={18}/></button>
       <button className="victory-map" disabled={busy} onClick={returnToMap}>Voir ma progression sur la carte →</button>
     </section></div>}
+
+    {descent && screen === 'game' && !animating && <div className="descent-scene" data-biome={biome.id} role="dialog" aria-label="Un escalier s’ouvre">
+      <div className="arrival-veil" aria-hidden="true"/>
+      <section className="arrival-card descent-card">
+        <span className="arrival-symbol" aria-hidden="true">⌄</span>
+        <p className="eyebrow">LA PIERRE SONNE CREUX</p>
+        <h2>Un escalier<br/><em>s’enfonce sous vos pieds.</em></h2>
+        <p className="arrival-story">{secrets.find(item => item.id === descent.level)?.subtitle || 'Un autre passage attend en dessous, plus difficile que celui-ci — et il garde quelque chose.'} Vous pourrez remonter par le même chemin : le portail vous attendra.</p>
+        <div className="descent-actions">
+          <button className="primary-button" disabled={busy} onClick={enterSecret}>Descendre<Icon name="arrow" size={18}/></button>
+          <button className="text-button" onClick={() => setDescent(null)}>Plus tard</button>
+        </div>
+      </section>
+    </div>}
 
     {arrival && screen === 'game' && <div className="arrival-scene" data-biome={arrival} role="dialog" aria-label={getBiome(arrival).title} onClick={() => setArrival(null)}>
       <div className="arrival-veil" aria-hidden="true"/>
@@ -544,8 +651,8 @@ export default function App() {
       </div>
       <div className="hazard-guide"><p><strong>Glace de Boréale</strong> · Lumen garde sa direction d’arrivée et ne peut ni tourner ni s’arrêter. Choisissez une dalle stable au-delà : le trajet complet est annoncé avant la traversée.</p><p><strong>Crocodiles</strong> · Leur dalle peut glisser, mais Lumen ne peut pas la traverser. Certains patrouillent : ils changent de pierre à chaque dalle déplacée, et la case qu’ils visent est signalée.</p><p><strong>Courants</strong> · La flèche impose la direction de sortie de cette dalle.</p><p><strong>Marée</strong> · Le levier inverse tous les courants et découvre les dalles immergées. Il compte comme un déplacement.</p><p><strong>Sceaux et portes</strong> · Une porte s’ouvre quand son sceau est actif : sous la pierre de lest, ou après que Lumen a touché le levier.</p><p><strong>Dalles fragiles</strong> · Rejoignez une dalle stable en une seule course. Les pierres fragiles tombent derrière vous, créent de nouveaux vides et lézardent leurs voisines fissurées.</p><p><strong>Trésors</strong> · Chaque relique est un cul-de-sac : elle coûte un détour et ne raccourcit jamais la route.</p></div>
       <p className="help-tip"><Icon name="bulb" size={19}/> Revenez sur vos pas quand le chemin le permet, ou annulez votre action. Un indice montre la prochaine action possible vers une solution.</p>
-      <div className="shortcut-list"><span><kbd>ESPACE</kbd> Changer de mode</span><span><kbd>ENTRÉE</kbd> Avancer / déplacer la sélection</span><span><kbd>↑ ↓ ← →</kbd> Choisir une dalle / marcher</span><span><kbd>Z</kbd> Annuler <kbd>R</kbd> Recommencer <kbd>H</kbd> Indice <kbd>T</kbd> Marée</span></div>
-      <p className="keyboard-note">Glissez sur le plateau pour tourner autour. La molette ou le pincement à deux doigts permet de zoomer. Un clic bref joue une dalle. Les flèches suivent les lignes du plateau : la vue du dessus facilite le jeu au clavier.</p>
+      <div className="shortcut-list"><span><kbd>ESPACE</kbd> ou <kbd>CLIC MOLETTE</kbd> Changer de mode</span><span><kbd>ENTRÉE</kbd> Avancer / déplacer la sélection</span><span><kbd>↑ ↓ ← →</kbd> Choisir une dalle / marcher</span><span><kbd>Z</kbd> Annuler <kbd>R</kbd> Recommencer <kbd>H</kbd> Indice <kbd>T</kbd> Marée</span></div>
+      <p className="keyboard-note">Glissez sur le plateau pour tourner autour. La molette ou le pincement à deux doigts permet de zoomer. Un clic bref joue une dalle, un clic molette change de mode. Les flèches suivent les lignes du plateau : la vue du dessus facilite le jeu au clavier.</p>
       <button className="primary-button" onClick={closeModal}>L’aventure commence <Icon name="arrow" size={18}/></button>
     </Dialog>}
     {modal === 'levels' && <Dialog onClose={closeModal} title="Choisir un chapitre">

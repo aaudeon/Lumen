@@ -135,6 +135,11 @@ export function purchase(wardrobe, itemId, balance) {
   const safe = { ...EMPTY_WARDROBE, ...wardrobe, equipped: { ...DEFAULT_LOOK, ...wardrobe?.equipped } };
   if (!item) return { ok: false, reason: 'Cet objet n’existe pas.', wardrobe: safe };
   if (owns(safe, itemId)) return { ok: false, reason: 'Vous possédez déjà cet objet.', wardrobe: safe };
+  // Found companions have a worth, not a price: no purse opens them.
+  if (item.secret) {
+    return { ok: false, wardrobe: safe,
+      reason: 'Cette pièce ne s’achète pas : elle se trouve au fond d’un passage secret.' };
+  }
   if (balance < item.price) {
     return { ok: false, wardrobe: safe,
       reason: `Il vous manque ${(item.price - balance).toLocaleString('fr-FR')} crédits.` };
@@ -144,6 +149,15 @@ export function purchase(wardrobe, itemId, balance) {
     wardrobe: { ...safe, owned: [...safe.owned, itemId], spent: safe.spent + item.price,
       equipped: { ...safe.equipped, [item.slot]: itemId } },
   };
+}
+
+/** Hand a piece over without opening the purse: what a secret passage does. */
+export function grant(wardrobe, itemId) {
+  const item = ITEMS[itemId];
+  const safe = { ...EMPTY_WARDROBE, ...wardrobe, equipped: { ...DEFAULT_LOOK, ...wardrobe?.equipped } };
+  if (!item) return safe;
+  const owned = safe.owned.includes(itemId) ? safe.owned : [...safe.owned, itemId];
+  return { ...safe, owned, equipped: { ...safe.equipped, [item.slot]: itemId } };
 }
 
 /** Equipping something you do not own leaves the wardrobe untouched. */

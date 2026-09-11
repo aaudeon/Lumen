@@ -160,8 +160,8 @@ export default function Shop({ wardrobe, credits, progress, biome, onBuy, onEqui
           <div className="atelier-selection">
             <p className="atelier-family">{family.symbol} {family.name} <span style={{ color: RARITIES[item.rarity].color }}>{RARITIES[item.rarity].name}</span></p>
             <h3>{item.name}</h3><p className="atelier-story">{item.story}</p>
-            <div className="atelier-selected-price"><span>{slotName[item.slot]}</span><strong>{held ? worn ? 'Déjà équipé' : 'Dans votre collection' : `✦ ${points(item.price)}`}</strong></div>
-            <button className="atelier-buy" disabled={worn || !held && credits < item.price} onClick={acquire}>{worn ? 'Équipé' : held ? 'Équiper cette pièce' : credits < item.price ? `Il manque ${points(item.price - credits)} crédits` : `Acheter et équiper · ${points(item.price)}`}</button>
+            <div className="atelier-selected-price"><span>{slotName[item.slot]}</span><strong>{held ? worn ? 'Déjà équipé' : 'Dans votre collection' : item.secret ? '⌄ Trouvaille' : `✦ ${points(item.price)}`}</strong></div>
+            <button className="atelier-buy" disabled={worn || !held && (item.secret || credits < item.price)} onClick={acquire}>{worn ? 'Équipé' : held ? 'Équiper cette pièce' : item.secret ? 'Se trouve au fond d’un passage secret' : credits < item.price ? `Il manque ${points(item.price - credits)} crédits` : `Acheter et équiper · ${points(item.price)}`}</button>
             {item.fresh && item.slot !== 'pet' && <button className="atelier-ensemble" onClick={() => { setTrial(previous => ({ ...previous, ...ensemble(item.collection) })); setDetail(false); setNote(`Collection ${family.name} à l’essai. Aucun achat effectué.`); }}>Essayer toute la collection <span>→</span></button>}
             <p className="atelier-note" role="status">{note || (bestiary ? 'Il réagit aux trésors, aux dangers et à vos victoires. Essayage gratuit.' : 'Associez les collections pour inventer votre propre aventurier.')}</p>
           </div>
@@ -180,7 +180,7 @@ export default function Shop({ wardrobe, credits, progress, biome, onBuy, onEqui
             {result.items.map(piece => <button key={piece.id} className="atelier-item" aria-pressed={piece.id === selected} aria-label={`Essayer ${piece.name}, ${owns(wardrobe, piece.id) ? 'possédé' : `${points(piece.price)} crédits`}`} onClick={() => tryItem(piece)} style={{ '--rarity': RARITIES[piece.rarity].color }}>
               <span className="atelier-item-top"><small>{slotName[piece.slot]}</small>{piece.fresh && <em>NOUVEAU</em>}</span>
               <span className="atelier-thumbnail">{thumbnails[piece.id] ? <img src={thumbnails[piece.id]} alt=""/> : <span aria-hidden="true">{piece.price ? originOf(piece).symbol : '—'}</span>}</span>
-              <strong>{piece.name}</strong><span className="atelier-item-bottom"><small>{RARITIES[piece.rarity].name}</small><b>{equipped[piece.slot] === piece.id ? '✓ Équipé' : owns(wardrobe, piece.id) ? '✓ Possédé' : `✦ ${points(piece.price)}`}</b></span>
+              <strong>{piece.name}</strong><span className="atelier-item-bottom"><small>{RARITIES[piece.rarity].name}</small><b>{equipped[piece.slot] === piece.id ? '✓ Équipé' : owns(wardrobe, piece.id) ? '✓ Possédé' : piece.secret ? '⌄ Trouvaille' : `✦ ${points(piece.price)}`}</b></span>
             </button>)}
             {!result.total && <div className="atelier-empty"><span>⌕</span><h3>Aucune merveille par ici.</h3><p>Essayez un autre mot ou élargissez vos filtres.</p><button onClick={resetFilters}>Voir toutes les pièces</button></div>}
           </div>

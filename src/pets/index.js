@@ -23,6 +23,12 @@ import clockworkPet from './clockwork-pet.js';
 import corsairPet from './corsair-pet.js';
 import arcadePet from './arcade-pet.js';
 import { expressiveCreature } from './expressions.js';
+import salamandre from './salamandre.js';
+import hibou from './hibou.js';
+import meduse from './meduse.js';
+import limace from './limace.js';
+import phenix from './phenix.js';
+import renard from './renard.js';
 
 export const PETS = {
   'cat-tabby': catTabby,
@@ -43,6 +49,12 @@ export const PETS = {
   'clockwork-pet': clockworkPet,
   'corsair-pet': corsairPet,
   'arcade-pet': arcadePet,
+  'salamandre': salamandre,
+  'hibou': hibou,
+  'meduse': meduse,
+  'limace': limace,
+  'phenix': phenix,
+  'renard': renard,
 };
 
 export function buildCreature(tools, root, palette) {

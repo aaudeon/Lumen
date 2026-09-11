@@ -34,6 +34,8 @@ Le jeu s'ouvre sur une **carte d'expédition** : retrouvez les quatre mondes et 
 
 Le bouton **Carte** du plateau permet de revenir à l'accueil et de reprendre la partie en cours. Le chronomètre et le rendu 3D se mettent en pause dans l'accueil. Après une victoire, poursuivez vers le niveau suivant ou retrouvez votre progression sur la carte : le niveau 10 mène au 11 en Atlantide, le 17 au 18 dans le volcan, puis le 24 au 25 en Boréale.
 
+Six passages cachent un **escalier**. Une pierre du plateau porte une gravure creusée dans sa face supérieure, invisible en perspective : basculez en **vue du dessus** pour la repérer, puis amenez Lumen dessus — elle n'est jamais sur le chemin de la sortie, il faut la glisser jusqu'à un couloir ou lui amener le couloir. La pierre sonne creux, l'escalier s'ouvre, et une carte propose de **descendre** dans une salle annexe, plus difficile, qui garde une relique et un **compagnon qu'aucune boutique ne vend**. On en remonte au portail du niveau d'origine, qu'il reste à franchir : explorer ne fait jamais perdre une partie. À la sortie d'un passage qui cache un escalier, le carnet note que « quelque chose sonnait creux » ; une fois l'escalier trouvé, la carte le marque et le carnet permet d'y redescendre directement.
+
 1. En mode **déplacer**, cliquez sur une dalle voisine d'un emplacement vide pour la faire glisser. Les flèches sur les dalles indiquent les glissades possibles, uniquement à l'horizontale ou à la verticale. Si plusieurs vides sont voisins de la même dalle, choisissez ensuite celui à utiliser sur le plateau ou avec les boutons proposés.
 2. **Une dalle occupée par Lumen est bloquée.** Son emplacement est une contrainte du puzzle : il faut parfois avancer avant de poursuivre le taquin.
 3. Passez en mode **explorer** à tout moment. Survolez une dalle accessible pour voir le trajet pointillé, puis cliquez pour faire marcher Lumen jusqu'à cet arrêt sûr. Les ouvertures des dalles doivent se faire face. L'aperçu et les indices tiennent compte des dangers et des courants.
@@ -62,6 +64,7 @@ La traversée des dalles fragiles est automatique une fois l'arrêt choisi : pr�
 | Bouton de réinitialisation de la caméra | Retrouver la perspective de départ |
 | Vue du dessus | Observer les connexions à la verticale |
 | Espace | Changer de mode |
+| Clic molette sur la scène | Changer de mode |
 | Entrée | Avancer jusqu'au prochain arrêt sûr, ou déplacer la dalle sélectionnée en mode déplacer |
 | Flèches, en déplacement | Sélectionner une dalle ; Entrée pour la faire glisser |
 | Flèches, en exploration | Partir dans la direction indiquée jusqu'au prochain arrêt sûr, si le passage existe |
@@ -115,6 +118,8 @@ Les familiers ont leur propre rayon, à côté de **Tenues & effets** : un ongle
 
 Leurs volumes cubiques, yeux en pixels et carapaces à étages suivent le style de l'aventurier. Les pattes ont des raccords aux articulations. L'aperçu rapproche le compagnon seul : son socle et le cadrage restent fixes pendant ses animations et la rotation. **Ensemble** permet de le revoir auprès de Lumen.
 
+Une sixième famille, **Trouvailles**, rassemble les six compagnons qui ne se vendent pas : la Salamandre des racines, le Harfang des aurores, la Méduse de l'estran, la Limace de magma, le Phénix éteint et le Renard des glaces. Chacun attend au fond d'un passage secret et rejoint la ménagerie à la sortie de sa salle.
+
 Ils ne flottent pas sur place : le gréement leur applique un retard de suivi — ils traînent derrière quand vous partez, reviennent quand vous vous arrêtez — et chaque espèce a sa démarche. Un corgi piétine, un lynx traque, une tortue rentre la tête quand vous pressez le pas, un wyrm ondule. `tests/pets.check.mjs` mesure ces mouvements et **refuse deux créatures dont la signature se ressemble**.
 
 Le fonctionnement, l'économie et l'ajout de collections ou de familiers sont décrits dans [docs/boutique.md](docs/boutique.md).
@@ -128,6 +133,8 @@ Les trois premiers mondes gardent leurs passages d'origine et leurs **épreuves*
 - **Volcan · niveaux 18 à 24 :** Le seuil des cendres ; Le pont des braises ; La spirale d'obsidienne ; La forge des anciens ; Le cœur de la caldeira — puis Les premières fissures ; Le passage sacrifié.
 
 - **Boréale · niveaux 25 à 29 :** Le lac miroir ; Les aiguilles du nord ; Le refuge des veilleurs ; Le pont des séracs ; La couronne boréale. Sur la glace, Lumen doit aller tout droit sans s’arrêter. Les derniers niveaux combinent glisse, leviers, lest et effondrements. Voir [le guide de Boréale](docs/boreale.md).
+
+- **Passages secrets · six salles annexes :** La crypte des racines (sous La vigie, 10) ; La salle noyée (sous L'estran, 17) ; La veine de magma (sous Le pont des braises, 19) ; Le cœur éteint (sous Le passage sacrifié, 24) ; Le lac sous la glace (sous Le pont des séracs, 28) ; La caverne sous les aurores (sous La couronne boréale, 29). Chacune reprend la règle de son monde en plus dur, cache une relique en cul-de-sac et remet un compagnon exclusif. Voir [les passages secrets](docs/passages-secrets.md).
 
 Chaque monde s'ouvre sur une courte scène d'arrivée, et chaque sortie de niveau est célébrée.
 
@@ -187,11 +194,14 @@ Chaque monde possède son décor 3D : végétation et ruines dans la jungle ; co
 
 ```sh
 python -m unittest discover -s backend -v
-node --test tests/motion.test.js tests/score.test.js tests/cosmetics.test.js
+python tests/secrets.check.py
+node --test tests/*.test.js
 node tests/props.check.mjs
 node tests/pets.check.mjs
 node tests/layout.check.mjs
 npm run build
 ```
+
+`tests/secrets.check.py` rejoue chaque salle secrète : témoin gagnant avec son par, relique facultative en cul-de-sac, difficulté supérieure à l'hôte, règle du monde sur la route, indices jusqu'au portail. Les tests Python vérifient aussi que la pierre gravée de chaque hôte n'est jamais sur le trajet du témoin, que l'escalier ne s'ouvre qu'en marchant dessus, se referme à l'annulation, et que le portail reste franchissable ensuite.
 
 Les tests Python couvrent les règles, les solutions des vingt-neuf niveaux, l'unicité des plateaux, les quatre mondes et l'API. Ils vérifient aussi les crocodiles fixes et en maraude, les courants, la marée, les leviers et sceaux à poids, les effondrements en chaîne, le caractère facultatif des reliques, les déplacements avec plusieurs vides et leur annulation. Les tests Node de `tests/score.test.js` vérifient le barème, ses bornes et la somme du portefeuille ; ceux de `tests/cosmetics.test.js` couvrent le catalogue et les achats ; ceux de `tests/motion.test.js` vérifient les virages, le trajet inverse, les courtes marches, les aperçus sûrs et le choix d'un arrêt après une traversée fragile. La dernière commande construit le frontend dans `dist/`.

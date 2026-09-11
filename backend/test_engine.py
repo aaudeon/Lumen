@@ -9,10 +9,10 @@ import threading
 import unittest
 
 try:
-    from .engine import Game, GameError, LEVELS, FINISH, OUTSIDE, paths_from, solve_plan, Tile, make_tiles
+    from .engine import Game, GameError, LEVELS, SECRET_LEVELS, SECRET_SPURS, LEVEL_BY_ID, FINISH, OUTSIDE, paths_from, solve_plan, Tile, make_tiles, apply_plan, start_board, neighbors
     from .server import GameServer
 except ImportError:
-    from engine import Game, GameError, LEVELS, FINISH, OUTSIDE, paths_from, solve_plan, Tile, make_tiles
+    from engine import Game, GameError, LEVELS, SECRET_LEVELS, SECRET_SPURS, LEVEL_BY_ID, FINISH, OUTSIDE, paths_from, solve_plan, Tile, make_tiles, apply_plan, start_board, neighbors
     from server import GameServer
 
 
@@ -48,7 +48,7 @@ class RulesTests(unittest.TestCase):
         table = source.split("export const RATES = {")[1].split("};")[0]
         rates = {name: float(value) for name, value
                  in re.findall(r"'?([^\s',:]+)'?\s*:\s*([\d.]+)", table)}
-        for level in LEVELS:
+        for level in LEVELS + SECRET_LEVELS:
             with self.subTest(level=level.id):
                 self.assertIn(level.difficulty, rates)
                 self.assertGreaterEqual(rates[level.difficulty], 1)
@@ -486,6 +486,100 @@ class TrialTests(unittest.TestCase):
         self.assertEqual(game.moves, 2)
 
 
+class SecretTests(unittest.TestCase):
+    """Secret passages: an engraved stone, a room below, a way back up."""
+
+    def test_every_secret_room_is_solvable_and_names_its_host_and_reward(self):
+        self.assertGreaterEqual(len(SECRET_LEVELS), 6)
+        for level in SECRET_LEVELS:
+            with self.subTest(level=level.id):
+                self.assertNotIn(level.id, {item.id for item in LEVELS}, "hors de la campagne numérotée")
+                self.assertEqual(level.difficulty, "Secret")
+                self.assertIn(level.host, LEVEL_BY_ID)
+                self.assertEqual(LEVEL_BY_ID[level.host].secret, level.id, "l'hôte connaît sa salle")
+                self.assertTrue(level.reward, "un compagnon à rapporter")
+                self.assertTrue(level.public()["host"] and level.public()["reward"])
+                game = Game(level.id)
+                for action in level.solution:
+                    game.act(*action)
+                self.assertTrue(game.state()["won"])
+                self.assertEqual(game.moves, level.par)
+
+    def test_hosts_hide_one_engraved_dead_end_the_solution_never_treads(self):
+        hosts = [level for level in LEVELS if level.secret]
+        self.assertEqual({level.id for level in hosts}, set(SECRET_SPURS))
+        for level in hosts:
+            with self.subTest(level=level.id):
+                engraved = [tile for tile in level.tiles if tile and tile.engraved]
+                self.assertEqual(len(engraved), 1)
+                # One port only, like a relic stone: no corridor can ever reuse it.
+                self.assertEqual(len(engraved[0].ports), 1)
+                self.assertTrue(level.public()["secret"])
+                game = Game(level.id)
+                self.assertEqual(game.state()["descent"],
+                                 {"level": level.secret, "revealed": False, "here": False})
+                for action in level.solution:
+                    game.act(*action)
+                    self.assertFalse(game.revealed, "la solution d'auteur ne découvre rien")
+                self.assertTrue(game.state()["won"])
+                self.assertFalse(game.state()["descent"]["revealed"])
+
+    def test_unmarked_levels_expose_no_descent(self):
+        level = next(item for item in LEVELS if not item.secret)
+        self.assertIsNone(Game(level.id).state()["descent"])
+        self.assertFalse(level.public()["secret"])
+
+    def test_bringing_the_engraved_stone_to_its_branch_opens_the_stairs(self):
+        # The stone's corridor faces its anchor; sliding only stones the route
+        # never uses, it must reach the branch. Then standing on it reveals the way.
+        for host, (branch, anchor, side, stone) in SECRET_SPURS.items():
+            with self.subTest(host=host):
+                level = LEVEL_BY_ID[host]
+                game = Game(level.id)
+                for action in level.solution[:-1]:
+                    game.act(*action)
+                board = game.board
+                route = {c for c in paths_from(board, game.hero)[FINISH] if 0 <= c < FINISH}
+                free = {i for i in range(FINISH) if i not in route and i != game.hero and i != level.relic}
+                where = next(i for i, tile in enumerate(board.tiles) if tile and tile.id == stone)
+                holes = tuple(sorted(i for i in free if board.tiles[i] is None))
+                start, seen, queue = (holes, where), {(holes, where): None}, [(holes, where)]
+                while queue and queue[0][1] != branch:
+                    state = queue.pop(0)
+                    for hole in state[0]:
+                        for _, source in neighbors(hole):
+                            if source not in free or source in state[0]:
+                                continue
+                            nxt = (tuple(sorted(h if h != hole else source for h in state[0])),
+                                   hole if source == state[1] else state[1])
+                            if nxt not in seen:
+                                seen[nxt] = (state, (source, hole)); queue.append(nxt)
+                self.assertTrue(queue, "la pierre gravée doit pouvoir rejoindre l'embranchement")
+                moves, state = [], queue[0]
+                while seen[state] is not None:
+                    state, move = seen[state]; moves.append(move)
+                for source, hole in reversed(moves):
+                    game.act("slide", source, hole)
+                self.assertEqual(game.tiles[branch].id, stone)
+                self.assertFalse(game.state()["descent"]["here"])
+                state = game.act("walk", branch)
+                self.assertEqual(state["descent"], {"level": level.secret, "revealed": True, "here": True})
+                self.assertIn("escalier", state["message"])
+                restored = game.act("undo")
+                self.assertFalse(restored["descent"]["revealed"], "l'annulation referme la pierre")
+                game.act("walk", branch)
+                self.assertTrue(game.act("walk", FINISH)["won"], "la descente n'engage pas : le portail reste à prendre")
+                self.assertTrue(game.state()["descent"]["revealed"], "une fois trouvé, c'est trouvé")
+
+    def test_secret_room_hints_start_from_the_witness(self):
+        for level in SECRET_LEVELS:
+            with self.subTest(level=level.id):
+                game = Game(level.id)
+                hint = game.act("hint")["hint"]
+                self.assertIsNotNone(hint)
+                game.act(hint["type"], hint["index"], hint.get("to"))
+
+
 class ApiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -524,8 +618,11 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(json.loads(data)["ok"])
         status, _, data = self.request("GET", "/api/levels")
-        levels = json.loads(data)["levels"]
+        payload = json.loads(data)
+        levels = payload["levels"]
         self.assertEqual(len(levels), len(LEVELS))
+        self.assertEqual({item["id"] for item in payload["secrets"]}, {item.id for item in SECRET_LEVELS})
+        self.assertTrue(all(item["host"] for item in payload["secrets"]))
         self.assertEqual([level["biome"] for level in levels],
                          [level.biome for level in LEVELS])
         status, headers, data = self.request("POST", "/api/game", {"levelId": "aube"})

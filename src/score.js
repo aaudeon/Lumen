@@ -9,7 +9,7 @@ export const REWARDS = { passage: 400, moves: 300, steps: 250, time: 250, relic:
 /** A passage is worth what it asks of you: the authored difficulty label sets the rate. */
 export const RATES = {
   Initiation: 1, 'Découverte': 1, Exploration: 1.2, Aventure: 1.4,
-  'Défi': 1.6, Expert: 1.8, 'Maîtrise': 2.1, 'Légende': 2.5,
+  'Défi': 1.6, Expert: 1.8, 'Maîtrise': 2.1, 'Légende': 2.5, Secret: 3,
 };
 
 export function rateOf(difficulty) {

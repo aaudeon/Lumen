@@ -28,6 +28,7 @@ Les familiers ne sont plus une case du tableau combinatoire. Un compagnon n'est 
 | Tortues | Tortue moussue, Tortue dorée, Tortue-île |
 | Dragons | Dragonneau de braise, Dragon de givre, Wyrm de jade |
 | Merveilles | Les six compagnons venus des collections, remodelés |
+| Trouvailles | Six compagnons qu'aucune boutique ne vend : chacun attend au fond d'un passage secret |
 
 Le rayon **Familiers** a son propre onglet, à côté de **Tenues & effets**, et une rangée de familles qui remplace les collections. Y entrer montre **votre** compagnon seul en mouvement dans la cabine ; si vous n'en avez aucun d'équipé, la cabine garde votre tenue et la fiche présente un familier qui attend d'être essayé. **Pause** montre son comportement au repos ; **Ensemble** le replace auprès de Lumen.
 
@@ -94,6 +95,7 @@ La progression consiste à **choisir ses objets favoris**. Une bonne campagne fi
 | Cape / ailes | Épique | 1 400 |
 | Familier de collection | Légendaire | 1 700 |
 | Animal supplémentaire | Rare à légendaire | 1 100 à 6 200 |
+| Compagnon trouvé | Légendaire | ne s'achète pas |
 
 Les prix historiques ne sont pas recalculés. Une rareté décrit ici une catégorie cosmétique affichée ; elle ne donne aucune probabilité d'obtention.
 
@@ -106,6 +108,8 @@ Les prix historiques ne sont pas recalculés. Une rareté décrit ici une catég
 - `src/explorer.js` : points d'attache, marche et déclenchement des traces. `src/scene.js` fournit les groupes du monde et du portail.
 - `src/Shop.jsx` et `src/shop.css` : interface et essayage temporaire ; `HomeScreen.jsx` ouvre le panneau.
 - `src/preview.js` : caméra et aperçu autonome ; `src/thumbnails.js` : photographies des pièces.
+
+Un familier dont la ligne du `ROSTER` porte un neuvième champ — l'identifiant du niveau hôte — est une **trouvaille** : la fiche affiche « ⌄ Trouvaille » à la place du prix, `purchase` le refuse, et `grant` le remet, équipé, à la sortie de sa salle secrète. Le prix inscrit ne sert qu'à la rareté affichée. Voir [Passages secrets](passages-secrets.md).
 
 Pour ajouter un familier : une ligne dans le `ROSTER` de `bestiary.js`, un fichier `src/pets/<id>.js` suivant le contrat, une ligne dans `src/pets/index.js`, puis `node tests/pets.check.mjs <id>`. Pour ajouter une famille entière, ajouter sa fiche à `PET_FAMILIES` — l'onglet la reprend automatiquement.
 

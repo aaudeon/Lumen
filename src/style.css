@@ -75,8 +75,8 @@
 .arrival-card h2{font-family:Georgia,serif;font-weight:400;font-size:36px;line-height:1.14;letter-spacing:-.8px;color:#eceada}
 .arrival-card h2 em{font-style:italic;color:var(--gold)}
 .arrival-story{margin:18px 0 26px;font-size:12px;line-height:1.85;color:#9fb2a8}
-.arrival-scene[data-biome=atlantis] .arrival-card{background:linear-gradient(155deg,#12303ce8,#0b1f2af2)}
-.arrival-scene[data-biome=volcano] .arrival-card{background:linear-gradient(155deg,#2a1f26e8,#180f16f2)}
+.arrival-scene[data-biome=atlantis] .arrival-card,.descent-scene[data-biome=atlantis] .arrival-card{background:linear-gradient(155deg,#12303ce8,#0b1f2af2)}
+.arrival-scene[data-biome=volcano] .arrival-card,.descent-scene[data-biome=volcano] .arrival-card{background:linear-gradient(155deg,#2a1f26e8,#180f16f2)}
 @media(max-width:700px){.arrival-card{padding:32px 24px}.arrival-card h2{font-size:26px}.board-legend .relic-chip{display:none}}
 
 /* --- Score du passage et portefeuille --- */
@@ -155,3 +155,15 @@
 .dev-badge>span{font-size:7px;letter-spacing:1px;color:#a9b8a6}
 .dev-badge:hover{border-color:#e6cd94aa}
 @media(max-width:700px){.dev-badge>span{display:none}.home-header-actions .dev-badge,.top-actions .dev-badge{padding:6px 9px;letter-spacing:1.2px}}
+
+/* --- Passages secrets : la descente, la rumeur, la trouvaille --- */
+.descent-scene{position:fixed;inset:0;z-index:9;display:flex;align-items:center;justify-content:center}
+.descent-card{max-width:min(500px,86vw)}
+.descent-card .arrival-symbol{font-size:44px;color:#8fe0c4;animation:none;transform:translateY(-4px)}
+.descent-card h2 em{color:#a8ffdc}
+.descent-actions{display:flex;flex-direction:column;align-items:center;gap:14px}
+.descent-actions .text-button{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#8fa891}
+.victory-rumour{margin-top:12px;font-size:11px;font-style:italic;color:#9fb2a8}
+.victory-rumour.found{font-style:normal;color:#8fe0c4}
+.victory-reward{color:#a8ffdc}
+@media(max-width:700px){.descent-card{padding:30px 22px}.descent-card h2{font-size:24px}}

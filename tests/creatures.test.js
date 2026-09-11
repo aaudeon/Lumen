@@ -12,7 +12,7 @@ const matrices = root => {
   return values;
 };
 
-test('all 18 companions react, settle and restore their authored gait without accumulated offsets', () => {
+test('every companion reacts, settles and restore their authored gait without accumulated offsets', () => {
   for (const item of BESTIARY) {
     const build = () => buildGear({ THREE, slot: 'pet', palette: { ...item.palette, creature: item.id } });
     const pet = build(), reference = build();

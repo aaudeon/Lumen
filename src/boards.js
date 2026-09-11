@@ -30,6 +30,12 @@ const profiles = {
   estran: ['atlantis','Terrasses de l’estran','aqueduct',.96,1.15,3],
   fissures: ['volcano','Faille naissante','chasm',1.05,.98,2],
   sacrifice: ['volcano','Pont sacrifié','needles',1.09,1.09,4],
+  crypte: ['jungle','Crypte des racines','roots',1.04,1.1,2],
+  caverne: ['boreal','Caverne sous les aurores','crown',.97,1.14,4],
+  noyee: ['atlantis','Salle noyée','rotunda',1.12,1.02,2],
+  veine: ['volcano','Veine de magma','chasm',.95,1.17,1],
+  coeur: ['volcano','Cœur éteint','caldera',1.15,1.07,3],
+  lac_profond: ['boreal','Lac sous la glace','lake',1.16,.96,1],
 };
 export function getBoardProfile(id) {
   const [biome,name,structure,sx,sz,variant] = profiles[id] || profiles.aube;

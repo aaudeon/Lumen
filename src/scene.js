@@ -81,6 +81,8 @@ export function createGameScene(host, callbacks) {
   controls.maxDistance = 27;
   controls.touches.ONE = THREE.TOUCH.ROTATE;
   controls.touches.TWO = THREE.TOUCH.DOLLY_ROTATE;
+  // The wheel already zooms: the middle button is free to switch between sliding and walking.
+  controls.mouseButtons.MIDDLE = null;
 
   const ambientLight = new THREE.HemisphereLight(0x9fc6c0, 0x12271b, 0.85);
   scene.add(ambientLight);
@@ -116,6 +118,7 @@ export function createGameScene(host, callbacks) {
   let cameraTransition = false;
   let pointerOrigin = null;
   let dragged = false;
+  let pointerButton = 0;
   let disposed = false;
   let active = true;
   let raf = 0;
@@ -131,6 +134,7 @@ export function createGameScene(host, callbacks) {
   let pendingSettle = false;
   let pendingVictory = false;
   let pendingTreasure = false;
+  let pendingDescent = false;
   const heroWorld = new THREE.Vector3();
   const materials = new Set();
   const geometries = new Set();
@@ -446,6 +450,39 @@ export function createGameScene(host, callbacks) {
       engraving.rotation.y = Math.PI / 4;
       box(group, 0.1, 0.013, 0.1, tileMat, 0, 0.035, 0, 0.02).rotation.y = Math.PI / 4;
     }
+    // A discreet glyph cut into the top face. Same material as the stone, a
+    // shade deeper: from the side it reads as wear, from above as a mark.
+    let engraving = null, stairs = null;
+    if (tile.engraved) {
+      const carve = material(0xffffff, { map: maps.top, roughness: .95, color: 0xb9b3a6,
+        emissive: 0x9fd3c0, emissiveIntensity: 0 });
+      engraving = { material: carve, lift: 0 };
+      const glyph = new THREE.Group();
+      glyph.position.y = .118;
+      group.add(glyph);
+      // A descending spiral: three nested steps turning inwards.
+      for (let ring = 0; ring < 3; ring++) {
+        const size = .42 - ring * .12;
+        for (const [x, z, w, d] of [[0, -size / 2, size, .028], [size / 2, 0, .028, size], [0, size / 2, size, .028], [-size / 2, 0, .028, size]]) {
+          const stroke = box(glyph, w, .006, d, carve, x, 0, z, .002);
+          stroke.castShadow = stroke.receiveShadow = false;
+        }
+      }
+      box(glyph, .07, .006, .07, carve, .0, 0, .0, .002).castShadow = false;
+      // The stairwell: a dark recess with three steps, hidden until revealed.
+      stairs = new THREE.Group();
+      stairs.visible = false;
+      group.add(stairs);
+      const pit = material(0x0b1518, { roughness: 1 });
+      const step = material(0x5f6a63, { roughness: .9, map: maps.edge });
+      const glow = material(0x8fe0c4, { emissive: 0x4fd9b7, emissiveIntensity: 1.4, toneMapped: false });
+      box(stairs, .66, .02, .66, pit, 0, .11, 0, .01).receiveShadow = false;
+      for (let i = 0; i < 3; i++) box(stairs, .6 - i * .14, .05, .18, step, 0, .09 - i * .045, -.22 + i * .19, .01);
+      const rim = mesh(new THREE.TorusGeometry(.36, .012, 6, 28), glow, stairs, 0, .125, 0);
+      rim.rotation.x = -Math.PI / 2;
+      rim.castShadow = false;
+      stairs.userData.glow = glow;
+    }
     const details = createTileScenery({ THREE, tile, profile: boardProfile });
     group.add(details.root);
     const numberCanvas = document.createElement('canvas');
@@ -483,7 +520,7 @@ export function createGameScene(host, callbacks) {
     group.position.copy(cellPosition(index));
     world.add(group);
     const data = { group, tileMat, tileEdge, pathMat, traceMat, target: cellPosition(index), index, texture, arrows,
-      hazard, details, tile, collapseDistance: null, fallStartedAt: null };
+      hazard, details, tile, engraving, stairs, collapseDistance: null, fallStartedAt: null };
     tiles.set(tile.id, data);
     return data;
   }
@@ -588,6 +625,9 @@ export function createGameScene(host, callbacks) {
       }
     }
     if (previous?.id === next.id && next.relic?.taken && !previous?.relic?.taken) pendingTreasure = true;
+    if (previous?.id === next.id && next.descent?.revealed && !previous?.descent?.revealed) pendingDescent = true;
+    if (!next.descent?.revealed) pendingDescent = false;
+    for (const data of tiles.values()) if (data.stairs) data.stairs.visible = Boolean(next.descent?.revealed);
     if (!next.relic?.taken) pendingTreasure = false;
     syncGuardians();
     syncFeatures();
@@ -706,7 +746,7 @@ export function createGameScene(host, callbacks) {
   }
   function onMove(event) {
     if (pointerOrigin && Math.hypot(event.clientX - pointerOrigin[0], event.clientY - pointerOrigin[1]) > 6) {
-      if (!dragged) callbacks.onOrbit?.();
+      if (!dragged && pointerButton === 0) callbacks.onOrbit?.();
       dragged = true;
       hovered = -2;
       updateColors();
@@ -723,8 +763,17 @@ export function createGameScene(host, callbacks) {
   }
   function onLeave() { hovered = -2; updateColors(); callbacks.onHover?.(-2); }
   function onClick(event) { if (dragged) return; const i = pick(event); if (i >= -1) callbacks.onTile?.(i); }
-  function onPointerDown(event) { pointerOrigin = [event.clientX, event.clientY]; dragged = false; cameraTransition = false; }
-  function onPointerUp() { pointerOrigin = null; renderer.domElement.style.cursor = 'grab'; }
+  function onPointerDown(event) {
+    pointerOrigin = [event.clientX, event.clientY]; pointerButton = event.button; dragged = false;
+    if (event.button === 0) cameraTransition = false;
+    else if (event.button === 1) event.preventDefault(); // No autoscroll: a middle click switches modes.
+  }
+  function onPointerUp(event) {
+    const pressed = pointerOrigin !== null;
+    pointerOrigin = null; renderer.domElement.style.cursor = 'grab';
+    // `click` only reports the main button, and `auxclick` is not universal: a short middle click is read here.
+    if (pressed && event.type === 'pointerup' && event.button === 1 && !dragged) callbacks.onModeToggle?.();
+  }
   function onWheel() { cameraTransition = false; callbacks.onOrbit?.(); }
   renderer.domElement.addEventListener('pointerdown', onPointerDown);
   renderer.domElement.addEventListener('pointerup', onPointerUp);
@@ -902,9 +951,16 @@ export function createGameScene(host, callbacks) {
       if (sample.complete) heroMotion = null;
     }
     hero.getWorldPosition(heroWorld);
-    for (const data of tiles.values()) data.hazard.update(time, {
-      urgent: data.collapseDistance !== null, dt, heroPosition: state?.won ? null : heroWorld,
-    });
+    for (const data of tiles.values()) {
+      data.hazard.update(time, { urgent: data.collapseDistance !== null, dt, heroPosition: state?.won ? null : heroWorld });
+      if (data.engraving) {
+        // Readable from above, near-invisible from the side: the glyph is lit only in top view.
+        data.engraving.lift += ((topView ? 1 : 0) - data.engraving.lift) * (1 - Math.exp(-dt * 4));
+        data.engraving.material.emissiveIntensity = data.engraving.lift * (.32 + Math.sin(time * 1.6) * .06);
+      }
+      if (data.stairs?.visible) data.stairs.userData.glow.emissiveIntensity = 1.1 + Math.sin(time * 2.2) * .35;
+    }
+    if (pendingDescent && !heroMotion) { pendingDescent = false; explorer.react('curious'); callbacks.onDescent?.(); }
     if (pendingTreasure && (!heroMotion || hero.position.distanceTo(cellPosition(state.relic.index)) < .55)) {
       pendingTreasure = false; explorer.react('treasure');
     }

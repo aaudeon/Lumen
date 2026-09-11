@@ -11,9 +11,9 @@ import threading
 from urllib.parse import parse_qs, unquote, urlsplit
 
 try:
-    from .engine import Game, GameError, LEVELS
+    from .engine import Game, GameError, LEVELS, SECRET_LEVELS
 except ImportError:
-    from engine import Game, GameError, LEVELS
+    from engine import Game, GameError, LEVELS, SECRET_LEVELS
 
 DIST = Path(__file__).resolve().parent.parent / "dist"
 MAX_BODY = 16 * 1024
@@ -100,7 +100,8 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/health":
             return self._json(200, {"ok": True, "name": "Lumen Taquin"})
         if parsed.path == "/api/levels":
-            return self._json(200, {"levels": [level.public() for level in LEVELS]})
+            return self._json(200, {"levels": [level.public() for level in LEVELS],
+                                    "secrets": [level.public() for level in SECRET_LEVELS]})
         if parsed.path == "/api/game":
             try:
                 params = parse_qs(parsed.query)

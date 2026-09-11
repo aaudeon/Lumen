@@ -94,3 +94,13 @@
 .arrival-scene[data-biome=boreal] .arrival-veil{background:radial-gradient(ellipse at 50% 40%,#56888033,#152139d9 70%)}
 .arrival-scene[data-biome=boreal] .arrival-symbol{color:#acf0df;text-shadow:0 0 45px #8bd9d36b}
 @media(max-width:700px){.biome-tabs button{gap:4px;padding:7px 3px}.biome-tabs button>span{font-size:19px}.biome-tabs strong{font-size:8px}.biome-tabs small{font-size:5px}}
+
+/* --- Passages secrets sur la carte et au carnet --- */
+.map-secret{position:absolute;right:-6px;top:-8px;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:#0f2a2c;border:1px solid #8fe0c4aa;color:#a8ffdc;font:700 11px Georgia,serif;line-height:1;pointer-events:none}
+.journal-secret{margin-top:4px;font-size:10px;color:#8fe0c4}
+.journal-secret span{margin-right:2px}
+button.journal-secret{display:flex;align-items:center;gap:6px;width:100%;padding:0;text-align:left}
+button.journal-secret em{margin-left:auto;font-style:normal;font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:#8fa891;white-space:nowrap}
+button.journal-secret:hover:not(:disabled) em{color:#a8ffdc}
+.journal-secret.cleared{color:#a8ffdc}
+.journal-secret.rumour{color:#8fa891;font-style:italic}
