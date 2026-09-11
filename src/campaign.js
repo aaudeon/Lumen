@@ -2,7 +2,7 @@ export const BIOMES = [
   {
     id: 'jungle', name: 'Jungle', world: 'I', title: 'Le sanctuaire de la jungle',
     headline: 'La jungle garde', emphasis: 'ses secrets.',
-    description: 'Sous les racines et la mousse, cinq passages attendent leur prochain voyageur.',
+    description: 'Sous les racines et la mousse, les passages attendent leur prochain voyageur.',
     arrival: 'Explorer la jungle', symbol: '❧',
   },
   {
@@ -14,13 +14,13 @@ export const BIOMES = [
   {
     id: 'volcano', name: 'Volcan', world: 'III', title: 'Le cœur du volcan',
     headline: 'Là où la terre', emphasis: 'brûle encore.',
-    description: 'Au-dessus des coulées de lave, retrouvez les cinq chemins taillés dans l’obsidienne.',
+    description: 'Au-dessus des coulées de lave, retrouvez les chemins taillés dans l’obsidienne.',
     arrival: 'Entrer dans le volcan', symbol: '△',
   },
   {
     id:'boreal',name:'Boréale',world:'IV',title:'Les sanctuaires du grand nord',
     headline:'Au-delà des braises,',emphasis:'l’éclat du grand nord.',
-    description:'Cinq épreuves sous les aurores. Apprivoisez la glace, préparez vos appuis et réveillez les refuges scellés.',
+    description:'Des épreuves sous les aurores. Apprivoisez la glace, préparez vos appuis et réveillez les refuges scellés.',
     arrival:'Traverser la banquise',symbol:'❄',
   },
 ];

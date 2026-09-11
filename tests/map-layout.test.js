@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAP_REGIONS, mapStops } from '../src/map-layout.js';
+import { MAP_REGIONS, mapStops, terrainHeight } from '../src/map-layout.js';
 
 test('chaque biome possede sa geographie et son parcours', () => {
-  assert.equal(new Set(Object.values(MAP_REGIONS).map(region => JSON.stringify(region.land))).size, 4);
+  const reliefs = Object.keys(MAP_REGIONS).map(biome =>
+    JSON.stringify([150, 300, 450, 600, 750].flatMap(vertical =>
+      [150, 300, 450, 600, 750].map(horizontal => terrainHeight(biome, horizontal, vertical)))));
+  assert.equal(new Set(reliefs).size, 4);
   for (const [biome, count] of [['jungle',10],['atlantis',7],['volcano',7],['boreal',5]]) {
     const stops = mapStops(biome, count);
     assert.deepEqual(stops.map(stop => [stop.x, stop.y]), MAP_REGIONS[biome].route);
@@ -21,5 +24,16 @@ test('les niveaux supplementaires ne recyclent pas les positions', () => {
       assert.equal(new Set(stops.map(stop => `${stop.x},${stop.y}`)).size, count);
       assert.ok(stops.every(stop => Number.isFinite(stop.x) && Number.isFinite(stop.y)));
     }
+  }
+});
+
+test('le relief est stable et chaque destination repose sur une terre emergee', () => {
+  for (const [biome, region] of Object.entries(MAP_REGIONS)) {
+    for (const [horizontal, vertical] of region.route) {
+      const height = terrainHeight(biome, horizontal, vertical);
+      assert.ok(Number.isFinite(height) && height > .1, `${biome}: ${horizontal},${vertical}`);
+      assert.equal(terrainHeight(biome, horizontal, vertical), height);
+    }
+    assert.ok(terrainHeight(biome, 0, 0) < 0);
   }
 });

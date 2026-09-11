@@ -1,27 +1,15 @@
 export const MAP_REGIONS = {
   jungle: {
-    route: [[220, 750], [500, 750], [780, 750], [780, 550], [500, 550], [220, 550], [220, 350], [500, 350], [780, 350], [500, 150]],
-    land: ['M120 780 Q70 600 130 430 Q80 230 260 160 Q390 35 590 80 Q740 90 820 240 Q930 380 875 550 Q950 760 800 820 Q420 875 120 780Z'],
-    patches: [[160,240,40,35],[630,190,55,40],[360,440,55,25],[670,640,65,25],[360,650,45,30]],
-    temples: [[500,110,48],[845,450,34]],
+    route: [[210, 745], [490, 720], [785, 750], [765, 530], [485, 510], [215, 540], [240, 320], [515, 305], [790, 315], [510, 140]],
   },
   atlantis: {
     route: [[190, 740], [500, 740], [800, 600], [550, 440], [220, 440], [350, 200], [720, 180]],
-    land: ['M90 670 Q170 610 280 680 L300 780 Q180 840 85 785Z', 'M390 690 Q490 610 580 690 L610 800 L440 830Z', 'M705 560 L810 490 L900 580 L870 685 L730 690Z', 'M420 410 Q550 315 635 405 L650 495 L480 520Z', 'M100 385 L250 350 L310 450 L250 520 L115 495Z', 'M235 150 L370 90 L450 200 L405 270 L260 280Z', 'M580 140 Q730 55 850 135 L865 240 L650 260Z'],
-    patches: [[140,790,30,12],[565,790,22,20],[850,655,22,20],[610,485,20,18],[160,490,20,15],[400,230,20,15],[805,210,25,20]],
-    temples: [[745,110,42],[540,380,30]],
   },
   volcano: {
     route: [[210, 740], [200, 510], [240, 280], [500, 160], [790, 280], [790, 520], [580, 740]],
-    land: ['M110 810 L85 560 L140 290 L285 120 L500 65 L740 110 L880 280 L915 530 L795 760 L610 835 L495 785 L650 620 L740 460 L650 320 L475 275 L340 390 L330 615 L380 785Z'],
-    patches: [[140,650,20,35],[160,365,25,25],[365,190,35,25],[675,195,35,30],[855,410,20,30],[730,680,30,25]],
-    temples: [[500,100,40]],
   },
   boreal: {
     route: [[230, 760], [650, 620], [350, 450], [710, 300], [500, 140]],
-    land: ['M130 830 L95 710 L210 640 L390 605 L245 505 L205 405 L410 330 L570 320 L620 240 L395 220 L405 130 L505 55 L615 130 L650 200 L825 255 L845 360 L600 425 L455 450 L735 550 L800 665 L640 745 L390 765 L300 860Z'],
-    patches: [[200,710,35,20],[450,675,50,22],[290,400,20,15],[610,360,25,20],[610,210,20,15]],
-    temples: [[505,95,40],[715,590,32]],
   },
 };
 
@@ -38,4 +26,46 @@ export function mapStops(biomeId, count) {
     const end = route[segment + 1];
     return { x: start[0] + (end[0] - start[0]) * fraction, y: start[1] + (end[1] - start[1]) * fraction };
   });
+}
+
+const smoothStep = (low, high, value) => {
+  const fraction = Math.max(0, Math.min(1, (value - low) / (high - low)));
+  return fraction * fraction * (3 - 2 * fraction);
+};
+
+/** Un relief deterministe permet au decor et aux bornes de partager exactement le meme sol. */
+export function terrainHeight(biome, horizontal, vertical) {
+  const ripple = Math.sin(horizontal * .027 + Math.cos(vertical * .018)) * .035
+    + Math.sin(vertical * .043 + horizontal * .016) * .021;
+  const ellipse = (centerX, centerY, radiusX, radiusY) => Math.hypot((horizontal - centerX) / radiusX, (vertical - centerY) / radiusY);
+  let coast;
+  let height;
+  if (biome === 'atlantis') {
+    coast = Math.min(...MAP_REGIONS.atlantis.route.map(([centerX, centerY], index) =>
+      ellipse(centerX, centerY, index === 6 ? 160 : 128, index === 6 ? 125 : 102))) + ripple * 2;
+    height = .28 + .3 * Math.sin(horizontal * .015) ** 2;
+  } else if (biome === 'volcano') {
+    coast = ellipse(505, 450, 425, 390) + ripple;
+    const crater = ellipse(515, 425, 210, 205);
+    const rim = Math.exp(-(((crater - 1.03) / .3) ** 2));
+    height = .38 + rim * 2.4 + .2 * Math.sin(horizontal * .026 + vertical * .018);
+    height *= smoothStep(.45, .82, crater);
+    if (crater < .5) height = -.3;
+    const breach = Math.abs(horizontal - (520 + (vertical - 440) * .5));
+    if (vertical > 470 && breach < 22) height = Math.min(height, .05);
+  } else if (biome === 'boreal') {
+    coast = Math.min(...MAP_REGIONS.boreal.route.map(([centerX, centerY]) => ellipse(centerX, centerY, 190, 153))) + ripple * 1.8;
+    const ridge = Math.exp(-(((horizontal - 480 - Math.sin(vertical * .011) * 110) / 110) ** 2));
+    height = .48 + ridge * (1.4 + .7 * Math.sin(vertical * .021) ** 2);
+  } else {
+    coast = ellipse(505, 450, 425, 390) + ripple
+      + Math.sin(Math.atan2(vertical - 450, horizontal - 505) * 5) * .055;
+    height = .52 + .32 * Math.sin(horizontal * .009) * Math.cos(vertical * .014)
+      + Math.exp(-((horizontal - 530) ** 2 + (vertical - 175) ** 2) / 25000) * 1.2;
+    const river = Math.abs(horizontal - (365 + Math.sin(vertical * .013) * 54));
+    if (vertical > 370 && vertical < 730) height *= smoothStep(10, 31, river);
+  }
+  const arrivals = (MAP_REGIONS[biome] || MAP_REGIONS.jungle).route;
+  coast = Math.min(coast, ...arrivals.map(([centerX, centerY]) => ellipse(centerX, centerY, 95, 82)));
+  return -.65 + (1 - smoothStep(.88, 1.06, coast)) * (height + .65);
 }
