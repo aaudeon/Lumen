@@ -10,6 +10,8 @@ décisions structurantes reconstituées avec leur contrepartie.
 > total mesuré **4 982** lignes. Les tests passent : 30 tests Python, 7 tests Node.
 > Recomptez avant de citer un chiffre.
 
+**Comptes ajoutés le 2026-09-11 :** l'accès au jeu nécessite désormais une session. [backend/accounts.py](../backend/accounts.py) conserve les comptes et la progression dans un JSON privé ; [src/account.js](../src/account.js) gère les profils locaux, la file de synchronisation et les conflits. Les parties restent en mémoire mais sont liées à leur propriétaire. Voir [les protections et limites](../README.md#comptes-et-protection). Les métriques historiques ci-dessous ne couvrent pas cet ajout.
+
 ---
 
 ## 1. Cinq couches, une seule autorité
@@ -91,17 +93,16 @@ approximating directed paths ».
 | Position 3D de Lumen | `heroMotion` dans [scene.js:124](../src/scene.js#L124) | Interpolation le long de `walkPath` ; l'état logique est déjà à destination |
 | `mode` (`slide` / `walk`) | [App.jsx:70](../src/App.jsx#L70) | **Purement client** — `Game.act` accepte les deux types d'action à tout moment ([engine.py:329](../backend/engine.py#L329)) |
 | `selected`, `hovered`, `view` | [App.jsx:74-76](../src/App.jsx#L74) | Purement client, jamais transmis au serveur |
-| `progress`, records | `localStorage` du navigateur | **Seule persistance durable du projet** |
+| `progress`, records, garde-robe | Fichier JSON privé du serveur, avec copie locale par compte | Persistance durable avec révision et écritures atomiques |
 | Chronomètre | [App.jsx:81](../src/App.jsx#L81) | Purement client, non persisté, remis à zéro au rechargement |
 | Zone libre de l'écran (`safeArea`) | CSS → DOM → [scene.js:902](../src/scene.js#L902) | Purement cosmétique : recadre la caméra, n'affecte aucune règle |
 
 ### Trois conséquences non négociables
 
-1. **Redémarrer Python détruit toutes les parties.** Aucune persistance serveur, aucun TTL. Le client
+1. **Redémarrer Python détruit les plateaux en cours, pas les comptes.** Le client
    absorbe le 404 dans un `try/catch` silencieux ([App.jsx:216](../src/App.jsx#L216) — commentaire :
-   « Sessions expire when Python restarts ») et crée une partie neuve. Les records survivent, car ils
-   sont côté navigateur.
-2. **Le client ne peut pas tricher.** Toute action refusée l'est côté Python, atomiquement : `_save()`
+  « Sessions expire when Python restarts ») et crée une partie neuve. Les records et sessions de connexion survivent dans le JSON.
+2. **Les coups sont validés par le moteur, pas les scores de progression.** Toute action de jeu refusée l'est côté Python, atomiquement : `_save()`
    n'est appelé qu'après toutes les validations ([engine.py:299](../backend/engine.py#L299)).
 3. **Un instantané est indivisible.** Le serveur ne renvoie jamais de delta : chaque réponse est l'état
    complet — **23 clés fixes** plus `walkPath` conditionnelle (vérifié par exécution : `Game('aube').state()`

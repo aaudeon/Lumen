@@ -1,13 +1,15 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createGameScene } from './scene.js';
 import { GameAudio } from './audio.js';
 import HomeScreen from './HomeScreen.jsx';
-import { BIOMES, frontierLevel, getBiome, isOpen as passageOpen, SAVE_KEYS, SAVE_VERSION, VERSION_KEY } from './campaign.js';
+import { BIOMES, frontierLevel, getBiome, isOpen as passageOpen } from './campaign.js';
 import { DEV_MODE, exitDevMode } from './dev-mode.js';
 import { directionalDestination } from './motion.js';
 import { getBoardProfile } from './boards.js';
 import { LABELS, scoreRun, walletTotal } from './score.js';
 import { EMPTY_WARDROBE, DEFAULT_LOOK, ITEMS, equip, grant, purchase, spendable } from './cosmetics.js';
+import { accountRequest, ProgressProfile, SESSION_EXPIRED_EVENT } from './account.js';
+import AccountPanel, { AccountButton, AccountGate } from './AccountPanel.jsx';
 
 /** Dev mode lifts every padlock; otherwise the campaign rules decide. */
 const isOpen = (levels, progress, levelId, secrets = []) => {
@@ -39,29 +41,14 @@ function Icon({ name, size = 20, ...props }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>{paths[name] || paths.diamond}</svg>;
 }
 
-async function api(path, body) {
-  const response = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined);
+async function gameApi(path, body, userId) {
+  const response = await fetch(path, { credentials: 'same-origin', headers: { 'X-Lumen-Account': userId, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    ...(body ? { method: 'POST', body: JSON.stringify(body) } : {}) });
   const data = await response.json();
+  if (response.status === 401) window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
   if (!response.ok) throw new Error(data.error || data.message || 'Le serveur local ne répond pas.');
   return data;
 }
-function readSaved(key, fallback) {
-  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
-}
-function save(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Private browsing can disable storage. */ } }
-function forget() {
-  for (const key of SAVE_KEYS) {
-    try { localStorage.removeItem(key); } catch { /* Private browsing can disable storage. */ }
-  }
-}
-/** A save from an older format is cleared once, before any state reads it. */
-(function migrate() {
-  try {
-    if (Number(localStorage.getItem(VERSION_KEY)) === SAVE_VERSION) return;
-    forget();
-    localStorage.setItem(VERSION_KEY, String(SAVE_VERSION));
-  } catch { /* Private browsing can disable storage. */ }
-})();
 
 function Dialog({ children, onClose, title }) {
   const ref = useRef(null);
@@ -90,6 +77,61 @@ function Dialog({ children, onClose, title }) {
 }
 
 export default function App() {
+  const [profile, setProfile] = useState(null);
+  const [bootError, setBootError] = useState('');
+  const [generation, setGeneration] = useState(0);
+  function changeAccount(account) {
+    let storage;
+    try { storage = localStorage; } catch { /* Mode prive sans stockage. */ }
+    const next = new ProgressProfile(account, storage);
+    setProfile(next);
+    setGeneration(previous => previous + 1);
+  }
+  useEffect(() => {
+    let cancelled = false;
+    accountRequest().then(account => { if (!cancelled) changeAccount(account); })
+      .catch(error => { if (!cancelled) setBootError(error.message); });
+    return () => { cancelled = true; };
+  }, []);
+  if (!profile) return <main className="account-loading"><h1>LUMEN</h1><p role={bootError ? 'alert' : 'status'}>{bootError || 'Ouverture du carnet…'}</p>{bootError && <button className="account-primary" onClick={() => location.reload()}>Réessayer</button>}</main>;
+  return <ProfileAccess key={generation} profile={profile} onAccountChange={changeAccount}/>;
+}
+
+function ProfileAccess({ profile, onAccountChange }) {
+  const status = useSyncExternalStore(profile.subscribe, profile.getStatus, profile.getStatus);
+  useEffect(() => {
+    if (!profile.user) return;
+    let active = true;
+    const checkSession = async () => {
+      try {
+        const account = await accountRequest();
+        if (active && account.user?.id !== profile.user.id) profile.expire();
+      } catch { /* Une panne reseau n'efface pas le carnet. */ }
+    };
+    const interval = setInterval(checkSession, 30000);
+    window.addEventListener('focus', checkSession);
+    window.addEventListener(SESSION_EXPIRED_EVENT, profile.expire);
+    return () => { active = false; clearInterval(interval); window.removeEventListener('focus', checkSession); window.removeEventListener(SESSION_EXPIRED_EVENT, profile.expire); };
+  }, [profile]);
+  if (!profile.user || status === 'expired') return <AccountGate profile={profile} status={status} onChange={onAccountChange}/>;
+  return <GameApp profile={profile} onAccountChange={onAccountChange}/>;
+}
+
+function GameApp({ profile, onAccountChange }) {
+  const api = (path, body) => gameApi(path, body, profile.user.id);
+  const readSaved = profile.read;
+  const save = profile.write;
+  const accountStatus = useSyncExternalStore(profile.subscribe, profile.getStatus, profile.getStatus);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [accountError, setAccountError] = useState('');
+  useEffect(() => {
+    const flush = () => { profile.flush().catch(() => {}); };
+    const interval = setInterval(flush, 10000);
+    window.addEventListener('online', flush);
+    window.addEventListener('pagehide', flush);
+    flush();
+    return () => { clearInterval(interval); profile.stop(); window.removeEventListener('online', flush); window.removeEventListener('pagehide', flush); };
+  }, [profile]);
   const [screen, setScreen] = useState('home');
   const [levels, setLevels] = useState([]);
   const [game, setGame] = useState(null);
@@ -122,6 +164,8 @@ export default function App() {
     const saved = readSaved('lumen-wardrobe', EMPTY_WARDROBE);
     return { ...EMPTY_WARDROBE, ...saved, equipped: { ...DEFAULT_LOOK, ...saved?.equipped } };
   });
+  useEffect(() => { profile.write('lumen-progress', progress); }, [profile, progress]);
+  useEffect(() => { profile.write('lumen-wardrobe', wardrobe); }, [profile, wardrobe]);
   const sceneHost = useRef(null);
   const frameProbe = useRef(null);
   const scene = useRef(null);
@@ -148,11 +192,11 @@ export default function App() {
   const closeModal = useCallback(() => setModal(null), []);
 
   function setWorking(value) { busyRef.current = value; setBusy(value); }
-  function persist(next) {
+  function persist(next, recordVictory = true) {
     setGame(next);
     save('lumen-session', next.id);
     save('lumen-level', next.levelId);
-    if (next.won) {
+    if (next.won && recordVictory) {
       const finished = passage(next.levelId);
       const seconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
       const run = finished && scoreRun({ par: finished.par, stepPar: finished.stepPar, moves: next.moves,
@@ -165,14 +209,12 @@ export default function App() {
         const updated = { ...previous, [next.levelId]: { ...previousBest, moves: Math.min(previousBest?.moves ?? Infinity, next.moves),
           completed: true, relic: Boolean(previousBest?.relic || next.relic?.taken),
           score: Math.max(previousBest?.score || 0, run?.total || 0) } };
-        save('lumen-progress', updated);
         return updated;
       });
       // A cleared secret room hands its companion over: found, never bought.
       if (finished?.reward) {
         setWardrobe(previous => {
           const given = grant(previous, finished.reward);
-          save('lumen-wardrobe', given);
           return given;
         });
       }
@@ -187,7 +229,6 @@ export default function App() {
       setProgress(previous => {
         if (previous[next.levelId]?.secretFound) return previous;
         const updated = { ...previous, [next.levelId]: { ...previous[next.levelId], secretFound: true } };
-        save('lumen-progress', updated);
         return updated;
       });
     }
@@ -362,7 +403,7 @@ export default function App() {
         if (!next) next = await api('/api/game', { levelId });
         if (!alive.current) return;
         requestInFlight.current = false;
-        persist(next);
+        persist(next, false);
         setNotice(passage(next.levelId)?.mechanic?.text || 'Un passage manque. Faites glisser une dalle vers la case vide.');
         setWorking(false);
       } catch {
@@ -489,19 +530,19 @@ export default function App() {
   const credits = spendable(progress, wardrobe);
   function buyCosmetic(itemId) {
     const result = purchase(wardrobe, itemId, spendable(progressRef.current, wardrobe));
-    if (result.ok) { setWardrobe(result.wardrobe); save('lumen-wardrobe', result.wardrobe); }
+    if (result.ok) setWardrobe(result.wardrobe);
     return result;
   }
   function equipCosmetic(itemId) {
     const next = equip(wardrobe, itemId);
     setWardrobe(next);
-    save('lumen-wardrobe', next);
   }
-  /** Start over as a brand-new traveller. Every saved key goes, then the page reloads:
-   *  the server hands out a fresh session, and the campaign reopens at passage one. */
-  function resetAccount() {
-    forget();
-    location.reload();
+  /** Le compte est efface seulement apres confirmation de l'ecriture serveur. */
+  async function resetAccount() {
+    if (busyRef.current) return;
+    setWorking(true);
+    try { await profile.reset(); location.reload(); }
+    catch (failure) { setAccountError(failure.message); setAccountOpen(true); setWorking(false); }
   }
   const nextLevel = room ? null : levels[chapter + 1];
   const secretFound = Boolean(progress[level?.id]?.secretFound);
@@ -511,7 +552,8 @@ export default function App() {
   const hoverText = hazardText || (hovered === game?.hero ? 'Dalle occupée · déplacement verrouillé' : hovered === 16 ? 'Le portail de lumière · sortie' : hovered >= 0 ? `Ligne ${Math.floor(hovered / 4) + 1} · colonne ${hovered % 4 + 1}${!game?.tiles[hovered] ? ' · vide disponible' : game?.slidable.includes(hovered) ? ' · peut glisser' : game?.reachable.includes(hovered) ? ' · chemin accessible' : ''}` : 'Glissez pour tourner · molette ou pincement pour zoomer · clic molette pour changer de mode');
 
   return <>
-    {screen === 'home' && <HomeScreen levels={levels} secrets={secrets} progress={progress} currentGame={game} busy={busy} error={error} onStart={startExpedition} onSound={toggleSound} sound={sound} wardrobe={wardrobe} credits={credits} onBuy={buyCosmetic} onEquip={equipCosmetic} onReset={resetAccount}/>}
+    {screen === 'home' && <HomeScreen levels={levels} secrets={secrets} progress={progress} currentGame={game} busy={busy} error={error} onStart={startExpedition} onSound={toggleSound} sound={sound} wardrobe={wardrobe} credits={credits} onBuy={buyCosmetic} onEquip={equipCosmetic} onReset={resetAccount} accountControl={<AccountButton profile={profile} status={accountStatus} onClick={() => { if (!busyRef.current) setAccountOpen(true); }}/>} connected={Boolean(profile.user)}/>}
+    {accountOpen && <AccountPanel profile={profile} status={accountStatus} onChange={onAccountChange} onClose={() => { setAccountOpen(false); setAccountError(''); }} initialError={accountError}/>}
     <main className="game-shell" data-biome={biome.id} hidden={screen !== 'game'}>
     <div className="grain" aria-hidden="true" />
     <header className="topbar">
@@ -530,6 +572,7 @@ export default function App() {
         <span className="chapter-count">{String(chapter + 1).padStart(2, '0')} <em>/ {String(levels.length || 15).padStart(2, '0')}</em></span>
       </nav>
       <div className="top-actions">
+        <AccountButton profile={profile} status={accountStatus} compact onClick={() => { if (!busyRef.current) returnToMap(); if (!busyRef.current) setAccountOpen(true); }}/>
         {DEV_MODE && <button className="dev-badge" onClick={exitDevMode} title="Mode dév : tous les passages sont ouverts. Cliquez pour en sortir."><i aria-hidden="true"/>MODE DÉV<span>quitter</span></button>}
         <span className="wallet-badge" title={`Crédits disponibles : ${credits.toLocaleString('fr-FR')} · portefeuille : ${wallet.toLocaleString('fr-FR')} pts, un record qui ne baisse jamais`}><Icon name="relic" size={14}/><strong>{credits.toLocaleString('fr-FR')}</strong><small>CRÉDITS</small></span>
         <button className="map-return" disabled={busy} onClick={returnToMap} title="Revenir à la carte" aria-label="Revenir à la carte">← <span>Carte</span></button>

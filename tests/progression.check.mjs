@@ -12,6 +12,7 @@
 import { readFileSync } from 'node:fs';
 import { EMPTY_WARDROBE, DEFAULT_LOOK } from '../src/cosmetics.js';
 import { BIOMES, SAVE_KEYS } from '../src/campaign.js';
+import { ProgressProfile } from '../src/account.js';
 import { buttons, load } from './render.mjs';
 
 const root = new URL('../', import.meta.url);
@@ -104,7 +105,10 @@ for (const key of new Set(written)) {
   check(SAVE_KEYS.includes(key), `Remise à zéro · la clé « ${key} » survivrait : absente de SAVE_KEYS`);
 }
 check(appSource.includes('function resetAccount()'), 'Remise à zéro · App n’expose plus resetAccount');
-check(appSource.includes('function migrate()'), 'Remise à zéro · la migration de format de sauvegarde a disparu');
+const oldValues = new Map(SAVE_KEYS.map(key => [key, JSON.stringify({ obsolete: true })]));
+const oldStorage = { getItem: key => oldValues.get(key) ?? null, setItem: (key, value) => oldValues.set(key, value), removeItem: key => oldValues.delete(key) };
+new ProgressProfile({ user: null }, oldStorage);
+check(SAVE_KEYS.every(key => !oldValues.has(key)), 'Remise à zéro · la migration conserve des données obsolètes');
 check(appSource.includes('onReset={resetAccount}'), 'Remise à zéro · le carnet n’est plus branché sur resetAccount');
 
 // Dev mode: every padlock lifted on an untouched account, and a badge that says so.

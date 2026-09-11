@@ -25,7 +25,7 @@ export async function load(name, tag = '') {
   await build({
     entryPoints: [fileURLToPath(new URL(`src/${name}`, root))],
     outfile, bundle: true, format: 'esm', platform: 'node', jsx: 'automatic', logLevel: 'warning',
-    external: ['react', 'react/jsx-runtime', 'react-dom', 'react-dom/server', 'three'],
+    external: ['react', 'react/jsx-runtime', 'react-dom', 'react-dom/server', 'three', 'lucide-react'],
     plugins: [{
       name: 'stylesheets-are-not-behaviour',
       setup(builder) {

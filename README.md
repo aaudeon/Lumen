@@ -16,7 +16,7 @@ Utilisez `python3 start.py` si votre système appelle Python `python3`.
 
 Pour jouer avec le dossier `dist/` fourni, il faut seulement **Python 3.10 ou plus récent** et un navigateur récent qui prend en charge WebGL. Le lanceur reconnaît également les runtimes fournis avec Codex sur cette machine. Aucune bibliothèque Python à installer.
 
-Pour construire le jeu après une modification des sources, ou si `dist/` est absent, il faut aussi **Node.js 22.12 ou plus récent avec npm**. Le lanceur télécharge alors les dépendances JavaScript puis construit le jeu : cette première préparation nécessite Internet. Les lancements suivants réutilisent ces fichiers. Le jeu et ses polices fonctionnent ensuite entièrement en local, sans compte. Les fichiers temporaires et le cache npm restent dans `work/`.
+Pour construire le jeu après une modification des sources, ou si `dist/` est absent, il faut aussi **Node.js 22.12 ou plus récent avec npm**. Le lanceur télécharge alors les dépendances JavaScript puis construit le jeu : cette première préparation nécessite Internet. Les lancements suivants réutilisent ces fichiers. Le jeu et ses polices fonctionnent ensuite entièrement en local, avec un compte enregistré sur ce serveur. Les fichiers temporaires et le cache npm restent dans `work/`.
 
 Options utiles :
 
@@ -30,7 +30,9 @@ python start.py --port 8766
 
 ## Comment jouer
 
-Le jeu s'ouvre sur une **carte d'expédition** : retrouvez les quatre mondes et leurs cartes distinctes, les passages d'origine, les épreuves et les cinq sanctuaires de Boréale, puis **Explorer**, **Reprendre** ou **Rejouer**. Les passages déjà terminés portent un sceau, la barre de progression compte les niveaux explorés et le **Carnet d'expédition** rassemble vos records. Les vingt-neuf niveaux s'ouvrent **l'un après l'autre** : un cadenas marque les passages encore fermés, et terminer un niveau déverrouille le suivant. Le carnet propose aussi de **recommencer l'aventure à zéro**, ce qui efface tout ce que ce navigateur garde.
+La connexion est obligatoire : créez un compte avec un pseudo et un mot de passe, puis retrouvez votre carnet. Il n'y a plus d'accès invité, même avec `?dev`. Une ancienne progression locale peut être reprise lors de l'inscription ; la connexion à un compte existant charge uniquement sa propre sauvegarde.
+
+Après connexion, le jeu s'ouvre sur une **carte d'expédition** : retrouvez les quatre mondes et leurs cartes distinctes, les passages d'origine, les épreuves et les cinq sanctuaires de Boréale, puis **Explorer**, **Reprendre** ou **Rejouer**. Les passages déjà terminés portent un sceau, la barre de progression compte les niveaux explorés et le **Carnet d'expédition** rassemble vos records. Les vingt-neuf niveaux s'ouvrent **l'un après l'autre** : un cadenas marque les passages encore fermés, et terminer un niveau déverrouille le suivant. Le carnet propose aussi de **recommencer l'aventure à zéro**, ce qui efface la progression du compte tout en conservant ses identifiants.
 
 Le bouton **Carte** du plateau permet de revenir à l'accueil et de reprendre la partie en cours. Le chronomètre et le rendu 3D se mettent en pause dans l'accueil. Après une victoire, poursuivez vers le niveau suivant ou retrouvez votre progression sur la carte : le niveau 10 mène au 11 en Atlantide, le 17 au 18 dans le volcan, puis le 24 au 25 en Boréale.
 
@@ -75,7 +77,26 @@ La traversée des dalles fragiles est automatique une fois l'arrêt choisi : pr�
 
 Le bouton **Avancer** rejoint lui aussi le prochain arrêt sûr. Quand le portail est accessible, il devient **Vers la sortie** et conduit Lumen jusqu'au bout du passage. Pour choisir une autre destination, cliquez sur la dalle accessible souhaitée en mode explorer. Un geste de rotation déplace la caméra ; un clic ou toucher bref actionne la dalle. Les flèches suivent toujours les lignes et colonnes du plateau, quelle que soit la caméra. Le bouton **Vue du dessus** facilite le jeu au clavier.
 
-Les niveaux terminés, vos records, vos points et votre garde-robe restent enregistrés dans ce navigateur, y compris ceux des trois niveaux d'origine. Une partie en cours reste disponible tant que le serveur Python n'a pas été arrêté.
+Les niveaux terminés, vos records, vos points, secrets, achats, tenue et dernier niveau sont sauvegardés automatiquement sur le compte. Une partie en cours reste disponible dans le navigateur d'origine tant que le serveur Python n'a pas été arrêté ; le plateau et son historique ne sont pas persistés dans le fichier JSON.
+
+## Comptes et protection
+
+Le fichier privé `backend/data/accounts.json` est créé au premier compte. Il contient les mots de passe **hachés avec scrypt et un sel individuel**, les sessions et les sauvegardes. Aucune dépendance Python ni base de données externe n'est nécessaire. Le dossier est exclu de Git et inaccessible via Vite ; Python ne sert que `dist/`.
+
+- Toutes les routes de jeu exigent une session valide. Une partie ne peut être lue ou modifiée que par son propriétaire.
+- Les sessions durent 30 jours, sont révoquées à la déconnexion et utilisent un cookie `HttpOnly; SameSite=Strict`. Seule l'empreinte du jeton est enregistrée dans le JSON.
+- Connexion et inscription : **12 tentatives/minute/IP**, plus **8 connexions/15 minutes/pseudo**. Inscription : **3 tentatives/heure/IP**, avec un plafond global de 30/heure. Un champ piège rejette les formulaires automatisés qui le remplissent.
+- L'API est limitée à 600 requêtes/minute/IP, le jeu à 240/minute/compte, les nouvelles parties à 20/minute/compte et les sauvegardes à 120/minute/IP. Les refus renvoient `429` avec `Retry-After`. Les quotas sont en mémoire et repartent à zéro au redémarrage.
+- Les envois de progression sont sérialisés, avec une révision qui refuse l'écrasement d'une sauvegarde plus récente. En cas de coupure réseau, une copie locale isolée par compte attend le prochain envoi. Un conflit nécessite de confirmer le rechargement du carnet serveur.
+- La remise à zéro efface la progression du compte, pas ses identifiants. Elle attend la confirmation du serveur avant de vider la copie locale.
+
+**Sauvegarde du fichier :** arrêter le serveur, copier `backend/data/accounts.json` vers un emplacement privé, puis redémarrer. Ne pas modifier ce fichier pendant que le serveur tourne. Cette solution vise une petite installation avec **un seul processus Python**, pas plusieurs serveurs partageant le même JSON. Pas de récupération de mot de passe par e-mail ni de classement anti-triche : les scores envoyés par le client ne sont pas certifiés.
+
+**Avant une ouverture sur Internet :** placer le serveur derrière un reverse proxy HTTPS et définir `LUMEN_SECURE_COOKIE=1`. Conserver l'en-tête `Host` public lors du proxy. Ajouter des limites de connexions, de taille et de débit au proxy, et un CAPTCHA/WAF si nécessaire : les quotas et le champ piège ne bloquent pas un bot déterminé ni une attaque distribuée. Le serveur ignore volontairement `X-Forwarded-For` non fiable ; derrière un proxy, ses quotas IP sont donc partagés et le filtrage par IP réelle doit être fait au proxy. Les fichiers statiques de l'écran de connexion restent publics ; les parties et sauvegardes sont privées.
+
+En développement, Vite conserve le `Host` et relaie `/api` vers le port 8765. Pour un autre port, définir `LUMEN_API_TARGET` avant `npm run dev` (par exemple `http://127.0.0.1:8766`).
+
+Tests ciblés : `python -m unittest backend.test_accounts backend.test_engine.ApiTests` et `node --test tests/account.test.js`. Ils utilisent des fichiers JSON temporaires, jamais les comptes réels.
 
 ## Le score et le portefeuille
 

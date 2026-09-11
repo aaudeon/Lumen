@@ -589,7 +589,9 @@ class ApiTests(unittest.TestCase):
         (cls.dist / "index.html").write_text("<h1>Lumen</h1>", encoding="utf-8")
         (cls.dist / "main.js").write_text("const lumen = true", encoding="utf-8")
         (Path(cls.temp.name) / "private.txt").write_text("secret", encoding="utf-8")
-        cls.server = GameServer(("127.0.0.1", 0), dist=cls.dist)
+        cls.server = GameServer(("127.0.0.1", 0), dist=cls.dist, accounts_path=Path(cls.temp.name) / "accounts.json")
+        _, token = cls.server.accounts.authenticate("EngineTests", "test-password", register=True)
+        cls.cookie = "lumen_session=" + token
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
 
@@ -602,7 +604,7 @@ class ApiTests(unittest.TestCase):
 
     def request(self, method, path, body=None, raw=None, headers=None):
         client = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
-        request_headers = headers or {}
+        request_headers = {"Cookie": self.cookie, **(headers or {})}
         if body is not None:
             raw = json.dumps(body)
             request_headers = {"Content-Type": "application/json", **request_headers}
