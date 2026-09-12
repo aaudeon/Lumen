@@ -1,6 +1,16 @@
 import { buildBorealEnvironment } from './boreal-environment.js';
+import { buildEchoEnvironment } from './echo-environment.js';
 /** Scene palettes and self-owned scenery for the expedition's worlds. */
 export const BIOME_PALETTES = {
+  echoes: {
+    fog:0x1b332e,fogDensity:.017,sky:0xb0d4cb,ground:0x182a24,
+    sun:0xe5d4bf,sunPower:2.7,rimLight:0x91c7bc,ambient:1.15,
+    rock:0x4b5d54,base:0x899e8a,rim:0xc6b48f,dark:0x384d42,
+    tile:0xc5d6c5,edge:0x8aa895,active:0xe7efcf,hover:0xffecd4,occupied:0xf1dcad,
+    path:0xdcd4bf,connected:0x9ceac5,trace:0x849f94,traceGlow:0x375f51,
+    connectedGlow:0x56b891,highlight:0x1e3e30,gold:0xebc584,goldGlow:0xab783b,
+    portal:0xc5f1c6,motes:0xcbdec7,shaft:0xd9debd,
+  },
   boreal: {
     fog:0x24354f,fogDensity:.024,sky:0xbbdaeb,ground:0x26374c,
     sun:0xf4e9d5,sunPower:3.3,rimLight:0x8bebd1,ambient:1.1,
@@ -39,6 +49,13 @@ export const BIOME_PALETTES = {
   },
 };
 
+export const ECHO_PAST_PALETTE = {
+  ...BIOME_PALETTES.echoes, fog:0x4d5954, sky:0xf2f0dc, ground:0x576c5d, sun:0xffedd2,
+  sunPower:3.7, ambient:1.3, tile:0xf1e9db, edge:0xc9b8a3, base:0xdbd6c1,
+  active:0xfff3da, path:0xc8b89c, connected:0xf3cea0, connectedGlow:0xd9aa67,
+  trace:0xc7b68a, traceGlow:0x998455, rimLight:0xd8acb2, shaft:0xf9dca1,
+};
+
 export function createBiomeEnvironment({ THREE, world, maps = {}, boardTextures }) {
   const root = new THREE.Group();
   root.name = 'expedition-biomes';
@@ -48,6 +65,7 @@ export function createBiomeEnvironment({ THREE, world, maps = {}, boardTextures 
   let disposed = false;
 
   function build(kind) {
+    if(kind==='echoes') {const value=buildEchoEnvironment(THREE,root);variants.set(kind,value);return value;}
     if(kind==='boreal') {const value=buildBorealEnvironment(THREE,root);variants.set(kind,value);return value;}
     const group = new THREE.Group();
     group.name = `${kind}-environment`;
@@ -230,10 +248,11 @@ export function createBiomeEnvironment({ THREE, world, maps = {}, boardTextures 
   return {
     setBiome(kind) {
       if (disposed) return;
-      active = ['atlantis','volcano','boreal'].includes(kind) ? kind : null;
+      active = ['atlantis','volcano','boreal','echoes'].includes(kind) ? kind : null;
       if (active && !variants.has(active)) build(active);
       variants.forEach((value, name) => { value.group.visible = name === active; });
     },
+    setPhase(phase) { variants.get('echoes')?.setPhase(phase); },
     update(time) {
       if (disposed || !active) return;
       variants.get(active)?.animate.forEach(update => update(time));

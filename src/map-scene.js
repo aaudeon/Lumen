@@ -3,6 +3,7 @@ import { terrainHeight } from './map-layout.js';
 import { createSpaceMapScene } from './space-scene.js';
 
 const THEMES = {
+  echoes: { low: '#8ba490', high: '#d5d8be', rock: '#536d63', water: '#356d5a', leaves: ['#304d3a','#648672','#9eaaa0','#bd9286'], light: '#efe7c3', glow: '#f2d097', rim: '#b7e3cb' },
   jungle: { low: '#adad79', high: '#496d46', rock: '#72725b', water: '#236b66', leaves: ['#335d40','#50784b','#779956','#9cac69'], light: '#ffebbd', glow: '#ffe1a1', rim: '#a6dfbd' },
   atlantis: { low: '#d3d3ad', high: '#638f83', rock: '#829f91', water: '#227d8b', leaves: ['#d79894','#e5bca4','#90c5ba','#bd829c'], light: '#d5fff1', glow: '#a8f4ee', rim: '#8edce5' },
   volcano: { low: '#665650', high: '#49434b', rock: '#352f3b', water: '#302d3b', leaves: ['#50434b','#6d5655','#352e3b','#86695d'], light: '#ffd7af', glow: '#ffb775', rim: '#ef9b82' },
@@ -242,6 +243,19 @@ export function createMapScene(canvas, biome, stops, completed, onProject, level
         mesh(box, material('#e1dec0'), point.clone().add(new THREE.Vector3(0, height, 0)), [.4, .12, .35]);
         mesh(box, material('#a7b8a3'), point.clone().add(new THREE.Vector3(0, .02, 0)), [.45, .12, .45]);
       }
+    }
+  } else if (biome === 'echoes') {
+    const archive = positionAt(495, 120);
+    const gate = new THREE.TorusGeometry(.7, .09, 8, 30, Math.PI);
+    for (const offset of [-1.6, 0, 1.6]) {
+      mesh(gate, material('#d6d9c3'), archive.clone().add(new THREE.Vector3(offset, 1.1, 0)));
+      for (const side of [-1, 1]) mesh(column, material('#b69f8e'), archive.clone().add(new THREE.Vector3(offset + side * .7, .55, 0)), [1, 1.1, 1]);
+    }
+    mesh(new THREE.TorusGeometry(1.35, .035, 6, 70), material('#dfc281'), archive.clone().add(new THREE.Vector3(0, 2.1, -.45)));
+    for (const stop of stops.slice(0, -1)) {
+      const point = positionAt(stop.x - 40, stop.y + 28);
+      mesh(column, material('#657f70'), point.clone().add(new THREE.Vector3(0, .35, 0)), [1.2, .7, 1.2]);
+      mesh(stone, material('#bdc8af'), point.clone().add(new THREE.Vector3(.45, .1, 0)), [.35, .17, .4]);
     }
   } else if (biome === 'volcano') {
     lavaMaterial = material('#ef7434', { emissive: '#ff541a', emissiveIntensity: 1.3, roughness: .3 });

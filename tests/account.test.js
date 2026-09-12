@@ -97,6 +97,65 @@ test('account save remains readable when browser storage is disabled', () => {
   assert.deepEqual(profile.read('lumen-progress', {}), snapshot.progress);
 });
 
+test('a pack purchase flushes progression first, debits once and never equips a pack', async () => {
+  const calls = [];
+  let revision = 0;
+  const profile = new ProgressProfile(account(), storage(), async (path, body) => {
+    calls.push({ path, body });
+    revision++;
+    if (path.endsWith('/save')) return { revision };
+    return { packs: ['echoes'], revision, save: { ...profile.getSave(), wardrobe: {
+      ...profile.getSave().wardrobe, spent: 45000 } } };
+  });
+  profile.write('lumen-progress', { aube: { completed: true, score: 50000 } });
+  const first = profile.purchasePack('echoes');
+  assert.equal(profile.purchasePack('echoes'), first);
+  await first;
+  assert.deepEqual(calls.map(call => call.path), ['/api/account/save', '/api/account/pack']);
+  assert.equal(calls[1].body.revision, 1);
+  assert.equal(profile.getSave().wardrobe.spent, 45000);
+  assert.deepEqual(profile.getSave().wardrobe.equipped, emptySave().wardrobe.equipped);
+  assert.deepEqual(profile.packs, ['echoes']);
+  assert.equal(profile.status, 'saved');
+  profile.stop();
+});
+
+test('a refused pack purchase leaves the balance and access unchanged', async () => {
+  const profile = new ProgressProfile(account(), storage(), async () => {
+    const error = new Error('Solde insuffisant'); error.status = 400; throw error;
+  });
+  await assert.rejects(profile.purchasePack('echoes'), /Solde insuffisant/);
+  assert.deepEqual(profile.packs, []);
+  assert.equal(profile.getSave().wardrobe.spent, 0);
+  assert.equal(profile.status, 'saved');
+  profile.stop();
+});
+
+test('a save arriving during a pack purchase keeps the confirmed debit', async () => {
+  let completePurchase;
+  let notifyStarted;
+  const started = new Promise(resolve => { notifyStarted = resolve; });
+  const calls = [];
+  const profile = new ProgressProfile(account(), storage(), async (path, body) => {
+    calls.push({ path, body });
+    if (path.endsWith('/pack')) {
+      notifyStarted();
+      return new Promise(resolve => { completePurchase = resolve; });
+    }
+    return { revision: 2 };
+  });
+  const buying = profile.purchasePack('echoes');
+  await started;
+  profile.write('lumen-progress', { jardins: { completed: true, score: 900 } });
+  completePurchase({ packs: ['echoes'], revision: 1, save: { ...emptySave(), wardrobe: { ...emptySave().wardrobe, spent: 45000 } } });
+  await buying;
+  assert.equal(calls[1].body.save.wardrobe.spent, 45000);
+  assert.equal(calls[1].body.save.progress.jardins.score, 900);
+  assert.equal(profile.getSave().wardrobe.spent, 45000);
+  assert.equal(profile.revision, 2);
+  profile.stop();
+});
+
 test('session expiry locks the profile without discarding pending changes', async () => {
   const profile = new ProgressProfile(account(), storage());
   profile.write('lumen-progress', { aube: { completed: true } });

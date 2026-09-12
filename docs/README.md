@@ -1,6 +1,8 @@
 # Bienvenue dans LUMEN
 
-> **Espace et Lune :** les cinq stations à tunnels 3 × 3 × 3 sont conservées et suivies de cinq lunes parcourues uniquement en surface. Voir [Espace](espace.md). La campagne contient désormais 39 niveaux et 27 reliques, hors passages secrets.
+**Archives des Échos :** le sixième monde ajoute cinq niveaux entre deux époques, dans un pack à 45 000 points. Le mode développeur local permet de les tester sans achat. La campagne compte 44 passages et 32 reliques. Voir [les Archives](echoes.md).
+
+> **Espace et Lune :** les cinq stations à tunnels 3 × 3 × 3 et les cinq lunes parcourues en surface restent inchangées. Voir [Espace](espace.md).
 
 > **Boréale :** le quatrième monde, ses cinq passages et la règle de glisse sont décrits dans [Boréale](boreale.md).
 

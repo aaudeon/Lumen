@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Compass, Check, LockKeyhole, ShoppingBag, ArrowRight, X } from 'lucide-react';
 import { CATALOGUE, COLLECTIONS, DEFAULT_LOOK, ITEMS, RARITIES, SLOTS, browseCatalogue, owns } from './cosmetics.js';
 import { PET_FAMILIES } from './bestiary.js';
 import { walletTotal } from './score.js';
 import { createExplorerPreview } from './preview.js';
 import { photographItems } from './thumbnails.js';
 import './shop.css';
+import { DEV_MODE } from './dev-mode.js';
 
 const points = value => value.toLocaleString('fr-FR');
 const collectionById = Object.fromEntries(COLLECTIONS.map(collection => [collection.id, collection]));
@@ -36,7 +38,49 @@ function ExplorerStage({ look, slot, walking, biome, reaction }) {
   return <div className="atelier-stage" ref={host} aria-label="Aperçu animé de votre tenue. Faites glisser pour tourner.">{failed && <p>L’aperçu 3D est indisponible sur cet appareil. Les objets restent consultables et équipables.</p>}</div>;
 }
 
-export default function Shop({ wardrobe, credits, progress, biome, onBuy, onEquip, onClose }) {
+function ExpeditionShelf({ packs, ownedPacks, credits, busy, onBuyPack, onExplorePack }) {
+  const [confirmation, setConfirmation] = useState(null);
+  const [pending, setPending] = useState(false);
+  const [message, setMessage] = useState('');
+  async function acquirePack(pack) {
+    if (pending || busy) return;
+    setPending(true); setMessage('');
+    try {
+      const result = await onBuyPack?.(pack.id);
+      if (!result?.ok) { setMessage(result?.reason || 'L’achat n’a pas abouti. Aucun accès accordé.'); return; }
+      setConfirmation(null); setMessage('Expédition acquise. Votre carnet garde cet accès.');
+    } catch (error) { setMessage(error.message); }
+    finally { setPending(false); }
+  }
+  return <section className="expedition-shelf" aria-label="Packs de niveaux">
+    {packs.map(pack => {
+      const owned = ownedPacks.includes(pack.id);
+      const missing = Math.max(0, pack.price - credits);
+      return <article key={pack.id} className="pack-offer">
+        <div className="pack-art"><img src={pack.image} alt="Les ruines et les arches des Archives des Échos"/><span>EXPÉDITION FINALE</span></div>
+        <div className="pack-content">
+          <p className="pack-eyebrow"><Compass size={15}/>{pack.levelCount} PASSAGES · DEUX ÉPOQUES</p>
+          <h3>{pack.name}</h3><p className="pack-story">{pack.description}</p>
+          <dl className="pack-facts"><div><dt>Mécanique</dt><dd>Résonance temporelle</dd></div><div><dt>Découvertes</dt><dd>Fragments de mémoire · reliques</dd></div><div><dt>Accès</dt><dd>Permanent · lié au compte</dd></div></dl>
+          <div className="pack-price"><strong>{owned ? 'Pack acquis' : `${points(pack.price)} pts`}</strong><span>{owned ? 'Dans votre carnet' : 'Achat unique · points du jeu'}</span></div>
+          {owned ? <button className="atelier-buy" disabled={busy || !onExplorePack} onClick={() => onExplorePack?.(pack.id)}><Check size={18}/>Explorer les Archives<ArrowRight size={18}/></button>
+            : confirmation === pack.id ? <div className="pack-confirm" role="group" aria-label="Confirmer l’achat du pack">
+              <p>Dépenser {points(pack.price)} points ? Solde restant : {points(Math.max(0, credits - pack.price))} pts.</p>
+              <button className="atelier-buy" disabled={pending || busy || missing > 0} onClick={() => acquirePack(pack)}><ShoppingBag size={18}/>{pending ? 'Achat en cours…' : 'Confirmer l’achat'}</button>
+              <button className="pack-cancel" disabled={pending || busy} onClick={() => setConfirmation(null)}><X size={15}/>Annuler</button>
+            </div> : <button className="atelier-buy" disabled={busy || missing > 0} onClick={() => setConfirmation(pack.id)}><LockKeyhole size={18}/>{missing ? `Il manque ${points(missing)} pts` : `Débloquer · ${points(pack.price)} pts`}</button>}
+          {DEV_MODE && !owned && <button className="pack-cancel pack-test" disabled={busy || pending || !onExplorePack} onClick={() => onExplorePack?.(pack.id)}><Compass size={16}/>Tester en mode développeur</button>}
+        </div>
+      </article>;
+    })}
+    {!packs.length && <p className="pack-status">Le catalogue des expéditions est indisponible.</p>}
+    <p className="pack-status" role="status" aria-live="polite">{message}</p>
+  </section>;
+}
+
+export default function Shop({ wardrobe, credits, progress, biome, onBuy, onEquip, onClose,
+  packs = [], ownedPacks = [], onBuyPack, onExplorePack, busy = false, initialRoom = 'outfits' }) {
+  const [packRoom, setPackRoom] = useState(initialRoom === 'packs');
   const equipped = useMemo(() => ({ ...DEFAULT_LOOK, ...wardrobe?.equipped }), [wardrobe?.equipped]);
   const [collection, setCollection] = useState('faerie');
   // The menagerie gets its own room: families of creatures, not collections of clothes.
@@ -94,6 +138,7 @@ export default function Shop({ wardrobe, credits, progress, biome, onBuy, onEqui
     if (bestiary && piece.slot === 'pet') { setDetail(true); setWalking(true); }
   }
   function openBestiary() {
+    setPackRoom(false);
     // Your own companion greets you here. One you do not have waits on its card to be tried.
     const own = equipped.pet !== 'pet-none';
     const pet = bestiary && item.slot === 'pet' && item.price ? item.id : own ? equipped.pet : 'cat-tabby';
@@ -123,30 +168,31 @@ export default function Shop({ wardrobe, credits, progress, biome, onBuy, onEqui
   }
 
   return <div className="atelier-backdrop" onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className={`atelier ${bestiary ? 'atelier-menagerie' : ''}`} role="dialog" aria-modal="true" aria-labelledby="atelier-title" ref={dialog} style={{ '--collection': family.color || '#dfc88f' }}>
+    <section className={`atelier ${packRoom ? 'atelier-expeditions' : bestiary ? 'atelier-menagerie' : ''}`} role="dialog" aria-modal="true" aria-labelledby="atelier-title" ref={dialog} style={{ '--collection': family.color || '#dfc88f' }}>
       <header className="atelier-header">
-        <div><p className="atelier-eyebrow">LA BOUTIQUE DE L’EXPÉDITION</p><h2 id="atelier-title">{bestiary ? <>La ménagerie<span>.</span></> : <>Le cabinet des merveilles<span>.</span></>}</h2><p>{bestiary ? `${petCount} familiers · ${PET_FAMILIES.length} familles · chacun son caractère` : `${Object.keys(ITEMS).length} pièces · ${COLLECTIONS.length} collections · essayage gratuit`}</p></div>
+        <div><p className="atelier-eyebrow">LA BOUTIQUE DE L’EXPÉDITION</p><h2 id="atelier-title">{packRoom ? <>Les expéditions<span>.</span></> : bestiary ? <>La ménagerie<span>.</span></> : <>Le cabinet des merveilles<span>.</span></>}</h2><p>{packRoom ? 'Des passages au-delà des cartes connues' : bestiary ? `${petCount} familiers · ${PET_FAMILIES.length} familles · chacun son caractère` : `${Object.keys(ITEMS).length} pièces · ${COLLECTIONS.length} collections · essayage gratuit`}</p></div>
         <div className="atelier-purse"><small>CRÉDITS DISPONIBLES</small><strong>✦ {points(credits)}</strong><span>Portefeuille : {points(walletTotal(progress))} pts</span></div>
         <button ref={close} className="atelier-close" onClick={onClose} aria-label="Fermer la boutique">×</button>
       </header>
 
       <nav className="atelier-rooms" aria-label="Rayons de la boutique">
-        <button aria-pressed={!bestiary} onClick={() => { setBestiary(false); setDetail(false); setQuery(''); setRarity('all'); setOwnership('all'); }}><span>✧</span> Tenues & effets</button>
-        <button aria-pressed={bestiary} onClick={openBestiary}><span>❉</span> Familiers <em>{petCount}</em></button>
+        <button aria-pressed={!bestiary && !packRoom} onClick={() => { setPackRoom(false); setBestiary(false); setDetail(false); setQuery(''); setRarity('all'); setOwnership('all'); }}><span>✧</span> Tenues & effets</button>
+        <button aria-pressed={bestiary && !packRoom} onClick={openBestiary}><span>❉</span> Familiers <em>{petCount}</em></button>
+        <button aria-pressed={packRoom} onClick={() => setPackRoom(true)}><Compass size={18}/>Expéditions</button>
       </nav>
-      {!bestiary && <nav className="atelier-collections" aria-label="Collections de la boutique">
+      {!packRoom && !bestiary && <nav className="atelier-collections" aria-label="Collections de la boutique">
         <button aria-pressed={!bestiary && collection === 'all'} onClick={() => { setBestiary(false); setCollection('all'); }}><span aria-hidden="true">✧</span>Toutes les pièces</button>
         {COLLECTIONS.map(family => <button key={family.id} aria-pressed={!bestiary && collection === family.id} onClick={() => { setBestiary(false); setCollection(family.id); }} style={{ '--tab-color': family.color }}><span aria-hidden="true">{family.symbol}</span>{family.name}</button>)}
       </nav>}
 
-      {bestiary && <nav className="atelier-families" aria-label="Familles de familiers">
+      {!packRoom && bestiary && <nav className="atelier-families" aria-label="Familles de familiers">
         <button aria-pressed={petFamily === 'all'} onClick={() => setPetFamily('all')}><b aria-hidden="true">❉</b><span>Tout le bestiaire</span><small>{petCount} compagnons</small></button>
         {PET_FAMILIES.map(kin => <button key={kin.id} aria-pressed={petFamily === kin.id} onClick={() => choosePetFamily(kin.id)}>
           <b aria-hidden="true">{kin.symbol}</b><span>{kin.name}</span><small>{kin.tagline}</small>
         </button>)}
       </nav>}
 
-      <div className="atelier-body">
+      {packRoom ? <ExpeditionShelf packs={packs} ownedPacks={ownedPacks} credits={credits} busy={busy} onBuyPack={onBuyPack} onExplorePack={onExplorePack}/> : <div className="atelier-body">
         <section className="atelier-preview" aria-label="Cabine d’essayage">
           <div className="atelier-stage-heading"><span>{isTrying ? 'ESSAYAGE LIBRE' : 'VOTRE TENUE'}</span><button onClick={() => { setTrial({}); setDetail(false); setNote('Votre tenue équipée a été restaurée dans l’aperçu.'); }}>Ma tenue ↺</button></div>
           <div className="atelier-halo" aria-hidden="true"/>
@@ -187,8 +233,8 @@ export default function Shop({ wardrobe, credits, progress, biome, onBuy, onEqui
           <nav className="atelier-pagination" aria-label="Pages du catalogue"><button disabled={result.page === 1} onClick={() => setPage(result.page - 1)} aria-label="Page précédente">←</button><span>Page <strong>{result.page}</strong> sur {result.pages}</span><button disabled={result.page === result.pages} onClick={() => setPage(result.page + 1)} aria-label="Page suivante">→</button></nav>
           <details className="atelier-economy"><summary>Comment gagner des crédits ?</summary><p>Terminez de nouveaux passages ou améliorez vos meilleurs scores. Rejouer sans battre son record ne rapporte pas de crédits supplémentaires. Votre portefeuille conserve tous vos points ; seul le solde disponible baisse lors d’un achat.</p><p>Choisissez vos pièces préférées : la campagne ne finance pas le catalogue entier. Les raretés sont fixes, sans tirage au sort. Tout peut être essayé gratuitement.</p></details>
         </section>
-      </div>
-      <footer className="atelier-footer"><span>✧ Des merveilles pour le plaisir.</span> Aucun objet ne modifie les règles, la difficulté ou les records.</footer>
+      </div>}
+      <footer className="atelier-footer"><span>{packRoom ? 'Des points gagnés, de nouvelles destinations.' : '✧ Des merveilles pour le plaisir.'}</span> {packRoom ? 'Aucun paiement réel. Les expéditions restent liées à votre compte.' : 'Les tenues et familiers restent purement décoratifs.'}</footer>
     </section>
   </div>;
 }

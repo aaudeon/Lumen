@@ -66,6 +66,18 @@ export function createBoardTextures(THREE) {
         if(part === 'edge') for(let x=8;x<256;x+=48) line('#b4d6c67a',4,[[x,48],[x+26,48],[x+26,110],[x+8,110],[x+8,83]]);
         else {line('#b8a16e',4,[[0,10],[256,10]]);line('#b8a16e',4,[[0,246],[256,246]]);}
       }
+    } else if (kind === 'echoes') {
+      ctx.fillStyle=part==='path'?'#d2c9ae':part==='edge'?'#708879':'#a7baaa';
+      ctx.fillRect(0,0,256,256);
+      for(let index=0;index<10;index++) {
+        const horizontal=random(seed+index)*256;
+        line('#eff1dc3b',2,[[horizontal,0],[horizontal+18,80],[horizontal-9,180],[horizontal+12,256]]);
+      }
+      if(part==='top') {
+        ctx.strokeStyle='#4e766a';ctx.lineWidth=6;ctx.strokeRect(14,14,228,228);
+        ctx.strokeStyle='#d9c792';ctx.lineWidth=2;ctx.strokeRect(23,23,210,210);
+        for(const corner of [[35,35],[221,221]])line('#516e6299',3,[[corner[0]-7,corner[1]],[corner[0],corner[1]-7],[corner[0]+7,corner[1]],[corner[0],corner[1]+7],[corner[0]-7,corner[1]]]);
+      }
     } else if (kind === 'boreal') {
       ctx.fillStyle=part==='path' ? '#ddd5bb' : part==='edge' ? '#557e9b' : ['#acc7d5','#c0d6dc','#93b4cc'][variant];
       ctx.fillRect(0,0,256,256);

@@ -1,3 +1,16 @@
+test('a pack has paid progression in normal mode and can be previewed in dev mode', () => {
+  const levels = [{ id: 'base' }, { id: 'end' }, { id: 'echo-one', packId: 'echoes' }, { id: 'echo-two', packId: 'echoes' }];
+  const done = { base: { completed: true }, end: { completed: true } };
+  assert.equal(isOpen(levels, done, 'echo-one'), false);
+  assert.equal(isOpen(levels, done, 'echo-one', true), true);
+  assert.equal(isOpen(levels, {}, 'echo-two', true), true);
+  assert.equal(isOpen(levels, {}, 'echo-one', false, ['echoes']), true);
+  assert.equal(isOpen(levels, {}, 'echo-two', false, ['echoes']), false);
+  assert.equal(isOpen(levels, { 'echo-one': { completed: true } }, 'echo-two', false, ['echoes']), true);
+  assert.equal(frontierLevel(levels, done).id, 'end');
+  assert.equal(frontierLevel(levels, done, ['echoes']).id, 'echo-one');
+  assert.equal(unlockedBy(levels, 'echo-one'), null);
+});
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { frontierLevel, isOpen, openCount, SAVE_KEYS, SAVE_VERSION, unlockedBy, VERSION_KEY } from '../src/campaign.js';

@@ -14,6 +14,9 @@ export const MAP_REGIONS = {
   space: {
     route: [[170, 755], [470, 780], [790, 740], [800, 525], [490, 520], [180, 535], [220, 300], [530, 295], [820, 280], [510, 100]],
   },
+  echoes: {
+    route: [[170, 730], [680, 650], [350, 450], [770, 290], [490, 115]],
+  },
 };
 
 /** Les bornes HTML et le chemin peint partagent le meme repere, meme apres un ajout de niveaux. */
@@ -57,6 +60,10 @@ export function terrainHeight(biome, horizontal, vertical) {
     if (crater < .5) height = -.3;
     const breach = Math.abs(horizontal - (520 + (vertical - 440) * .5));
     if (vertical > 470 && breach < 22) height = Math.min(height, .05);
+  } else if (biome === 'echoes') {
+    coast = Math.min(...MAP_REGIONS.echoes.route.map(([centerX, centerY]) => ellipse(centerX, centerY, 205, 154))) + ripple;
+    const terraces = Math.floor(Math.max(0, 1 - ellipse(490, 430, 480, 430)) * 4) / 4;
+    height = .6 + terraces * 1.3;
   } else if (biome === 'boreal') {
     coast = Math.min(...MAP_REGIONS.boreal.route.map(([centerX, centerY]) => ellipse(centerX, centerY, 190, 153))) + ripple * 1.8;
     const ridge = Math.exp(-(((horizontal - 480 - Math.sin(vertical * .011) * 110) / 110) ** 2));

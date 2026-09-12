@@ -7,7 +7,7 @@ test('chaque biome possede sa geographie et son parcours', () => {
     JSON.stringify([150, 300, 450, 600, 750].flatMap(vertical =>
       [150, 300, 450, 600, 750].map(horizontal => terrainHeight(biome, horizontal, vertical)))));
   assert.equal(new Set(reliefs).size, Object.keys(MAP_REGIONS).length);
-  for (const [biome, count] of [['jungle',10],['atlantis',7],['volcano',7],['boreal',5],['space',10]]) {
+  for (const [biome, count] of [['jungle',10],['atlantis',7],['volcano',7],['boreal',5],['space',10],['echoes',5]]) {
     const stops = mapStops(biome, count);
     assert.deepEqual(stops.map(stop => [stop.x, stop.y]), MAP_REGIONS[biome].route);
     for (const stop of stops) {

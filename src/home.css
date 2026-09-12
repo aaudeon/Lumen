@@ -1,3 +1,8 @@
+.expedition-home[data-biome=echoes]{--map-light:225,218,173;--glass-top:rgba(117,155,127,.25);--glass-bottom:rgba(24,53,44,.7);background:radial-gradient(ellipse at 67% 40%,#436354,#203e34 50%,#172d2b)}
+.expedition-home[data-biome=echoes] .home-intro h1 em{color:#e4d6a8}
+.biome-tabs button[data-world=echoes]>span{color:#e7c38d}
+.biome-tabs button[data-world=echoes].locked{opacity:.82}
+@media(min-width:701px){.home-header{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:18px}.home-header .biome-tabs{position:static;transform:none;min-width:0;max-width:100%;overflow-x:auto;justify-self:stretch;scrollbar-width:thin}.home-header .biome-tabs button{flex-shrink:0}.home-header-actions{justify-self:end}}
 .expedition-home{position:relative;isolation:isolate;min-height:700px;height:100svh;overflow:hidden;background:radial-gradient(ellipse at 64% 47%,#365951 0%,#1c3a36 43%,#102826 76%,#0e211f);color:#eceddc}
 .home-ambient{position:absolute;inset:0;z-index:-1;background:repeating-linear-gradient(118deg,transparent 0 18%,#c2cd7d06 19%,transparent 25%);pointer-events:none}
 .home-header{height:104px;position:absolute;top:0;left:5%;right:5%;z-index:4;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #c3ceb317}

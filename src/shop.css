@@ -1,3 +1,22 @@
+.expedition-shelf{padding:26px;overflow:auto;min-height:0}
+.pack-offer{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(290px,1fr);gap:30px;max-width:1080px;margin:auto;padding:0 0 26px;border-bottom:1px solid #b6c8b12b}
+.pack-art{position:relative;align-self:center;min-width:0}
+.pack-art img{display:block;width:100%;height:auto;aspect-ratio:900/560;object-fit:contain;border-radius:6px}
+.pack-art>span{position:absolute;left:16px;top:14px;color:#e5deb4;font-size:9px;letter-spacing:0}
+.pack-content{min-width:0;padding:8px 0}
+.pack-eyebrow{display:flex;align-items:center;gap:8px;color:#adcfb5;font-size:9px;letter-spacing:0;margin-bottom:14px}
+.pack-content h3{font-family:'Manrope Variable',sans-serif;font-size:27px;line-height:1.25;letter-spacing:0;color:#eee9d6;margin:0 0 14px}
+.pack-story{font-size:12px;line-height:1.75;color:#b7c7bd}
+.pack-facts{display:grid;gap:10px;margin:22px 0;font-size:11px}
+.pack-facts>div{display:flex;justify-content:space-between;gap:15px;border-bottom:1px solid #b6c8b118;padding-bottom:8px}
+.pack-facts dt{color:#899f94}.pack-facts dd{margin:0;text-align:right;color:#d0dbcb}
+.pack-price{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:22px 0 14px}
+.pack-price strong{font-size:25px;color:#edd89c;font-weight:500}.pack-price span{font-size:10px;color:#a3b4a7;text-align:right;max-width:150px;line-height:1.5}
+.pack-content .atelier-buy{display:flex;justify-content:center;align-items:center;gap:9px;min-height:45px;font-size:12px;letter-spacing:0;white-space:normal}
+.pack-confirm>p{font-size:11px;line-height:1.65;color:#d8d6bc;margin-bottom:10px}.pack-cancel{display:flex;align-items:center;justify-content:center;gap:5px;width:100%;padding:12px;font-size:11px;color:#aabdaf}
+.pack-status{min-height:20px;max-width:1080px;margin:16px auto 0;font-size:12px;color:#c4d8c2}
+.atelier-expeditions .atelier-footer{margin-top:auto}
+@media(max-width:800px){.expedition-shelf{padding:18px}.pack-offer{grid-template-columns:1fr;gap:14px}.pack-art{max-width:580px;margin:auto}.pack-content h3{font-size:24px}.pack-facts{gap:7px;margin:16px 0}.atelier-rooms button{gap:5px;font-size:10px;padding:10px 8px}}
 .atelier-backdrop{position:fixed;inset:0;z-index:40;background:#081512d9;backdrop-filter:blur(12px);display:grid;place-items:center;padding:22px;color:#e7e8d8}
 .atelier{width:min(1200px,100%);max-height:calc(100svh - 44px);overflow:auto;border:1px solid #77928a55;border-radius:24px;background:#122923;box-shadow:0 35px 120px #0009;scrollbar-color:#496159 #142a23}
 .atelier *{box-sizing:border-box}.atelier button,.atelier select,.atelier input{font:inherit}.atelier button{cursor:pointer}.atelier button:disabled{cursor:default;opacity:.5}.atelier button:focus-visible,.atelier input:focus-visible,.atelier select:focus-visible,.atelier summary:focus-visible{outline:2px solid #f2d29b;outline-offset:3px}

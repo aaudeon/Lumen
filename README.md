@@ -1,6 +1,6 @@
 # LUMEN · Les chemins oubliés
 
-Un prototype jouable de **taquin d'aventure**, en React, Three.js et Python. Faites glisser les dalles, puis les cubes, pour guider Lumen de l'entrée à la sortie à travers **39 niveaux dans cinq mondes : la jungle, l'Atlantide, le volcan, Boréale et l'espace**. Le cinquième monde propose des stations à tunnels en **3 × 3 × 3**, puis des lunes dont on parcourt les faces extérieures, jusque sous le cube. Le décor, le personnage, les effets lumineux et les particules sont dessinés dans un canvas WebGL.
+Un prototype jouable de **taquin d'aventure**, en React, Three.js et Python. Faites glisser les dalles, puis les cubes, pour guider Lumen de l'entrée à la sortie à travers **44 niveaux dans six mondes : la jungle, l'Atlantide, le volcan, Boréale, l'espace et les Archives des Échos**. Les 39 premiers passages sont conservés ; les cinq Archives forment un pack à débloquer avec les points du jeu. Le décor, le personnage, les effets lumineux et les particules sont dessinés dans un canvas WebGL.
 
 ## Lancer le jeu
 
@@ -32,7 +32,7 @@ python start.py --port 8766
 
 La connexion est obligatoire : créez un compte avec un pseudo et un mot de passe, puis retrouvez votre carnet. Il n'y a plus d'accès invité, même avec `?dev`. Une ancienne progression locale peut être reprise lors de l'inscription ; la connexion à un compte existant charge uniquement sa propre sauvegarde.
 
-Après connexion, le jeu s'ouvre sur une **carte d'expédition** : retrouvez les cinq mondes et leurs cartes distinctes, puis **Explorer**, **Reprendre** ou **Rejouer**. Les passages déjà terminés portent un sceau, la barre de progression compte les niveaux explorés et le **Carnet d'expédition** rassemble vos records. Les trente-neuf niveaux s'ouvrent **l'un après l'autre** : un cadenas marque les passages encore fermés, et terminer un niveau déverrouille le suivant. Le carnet propose aussi de **recommencer l'aventure à zéro**, ce qui efface la progression du compte tout en conservant ses identifiants.
+Après connexion, le jeu s'ouvre sur une **carte d'expédition** : retrouvez les six mondes et leurs cartes distinctes, puis **Explorer**, **Reprendre** ou **Rejouer**. Les 39 premiers passages s'ouvrent **l'un après l'autre**. Les Archives des Échos nécessitent l'achat de leur pack à **45 000 points disponibles** dans la boutique, puis progressent dans leur propre ordre. Les records sont sauvegardés sur le compte. Remettre le carnet à zéro efface la progression et la garde-robe, mais conserve les identifiants et les packs achetés.
 
 Le bouton **Carte** du plateau permet de revenir à l'accueil et de reprendre la partie en cours. Le chronomètre et le rendu 3D se mettent en pause dans l'accueil. Après une victoire, poursuivez vers le niveau suivant ou retrouvez votre progression sur la carte : le niveau 10 mène au 11 en Atlantide, le 17 au 18 dans le volcan, le 24 au 25 en Boréale, puis le 29 au 30 dans l'espace.
 
@@ -48,6 +48,12 @@ Vous pouvez alterner librement entre les deux modes : il n'est pas nécessaire d
 ### Le taquin spatial
 
 Un plateau contient **26 cubes et un vide**, répartis sur trois étages. Un cube voisin peut glisser vers le vide selon les trois axes, sans tourner ni transporter Lumen. Les tunnels se raccordent sur leurs six faces. La vue **Éclaté** sépare les étages et le sélecteur d'étage donne accès au cœur du volume. Les boutons fléchés permettent de monter ou descendre par un tunnel ; au clavier, **Page précédente / Page suivante** ajoutent l'axe vertical aux quatre flèches habituelles. Annulation, indices, trésors, scores et sauvegarde fonctionnent comme dans les autres mondes. Voir [le guide de l'espace](docs/espace.md).
+
+### Les Archives des Échos
+
+Une cité existe en deux époques, **Ruines** et **Apogée**. Sur un chronolithe, faites résonner les pierres : elles gardent leur emplacement, mais leurs chemins changent. Retrouvez les fragments de mémoire dans les deux époques pour ouvrir la sortie. Les reliques se cachent dans la cité ancienne. Les cinq niveaux s'achètent ensemble dans **Boutique → Expéditions**, pour **45 000 points disponibles**. Achat unique, sans paiement réel. Voir [le guide des Échos](docs/echoes.md).
+
+**Essai local :** `?dev` permet de tester les cinq Archives sans achat. Aucun point ni record n'est enregistré pour l'essai d'un pack non acquis. Quitter le mode développeur rétablit le verrou normal.
 
 ### Les dangers et leurs usages
 
@@ -118,7 +124,7 @@ Tests ciblés : `python -m unittest backend.test_accounts backend.test_engine.Ap
 
 **Faire mieux que la référence ne rapporte pas plus que l'atteindre** : il n'y a rien à optimiser au-delà de la solution d'auteur. À l'inverse, aucune part ne devient négative — une course lente et prudente garde ses 400 points de passage. Le multiplicateur va de 1 (Initiation, Découverte) à 2,5 (Légende), pour qu'un passage difficile vaille ce qu'il demande.
 
-Le **portefeuille** additionne votre **meilleure course sur chaque niveau**. Rejouer ne peut donc que l'augmenter, et refaire le premier niveau en boucle ne rapporte rien. Il s'affiche en haut de l'écran de jeu, dans l'en-tête de la carte et dans le carnet d'expédition, où chaque passage montre son propre record. Le plafond théorique des 39 passages avec leurs 27 trésors est de **85 100 points**, hors passages secrets.
+Le **portefeuille** additionne votre **meilleure course sur chaque niveau**. Rejouer ne peut donc que l'augmenter, et refaire le premier niveau en boucle ne rapporte rien. Les 39 passages sans pack peuvent rapporter **85 100 points** ; la campagne complète de 44 passages et 32 trésors atteint **96 580 points**, hors passages secrets et avant dépenses.
 
 Le barème vit dans [src/score.js](src/score.js), à l'écart de l'interface, et `tests/score.test.js` le vérifie.
 
@@ -137,7 +143,7 @@ Le **portefeuille reste un record qui ne baisse jamais**. Les dépenses sont con
 
 L'économie privilégie le choix : le catalogue complet coûte **114 100 crédits**, contre un **plafond théorique de 85 100 points** pour les 39 passages et leurs trésors. Un nouvel ensemble coûte **7 300 crédits** ; ses pièces vont de 300 à 1 700 crédits. Les douze animaux supplémentaires coûtent de 1 100 à 6 200 crédits. Les prix des pièces d'origine restent inchangés. Les raretés sont fixes et tous les prix sont visibles, sans tirage au sort. Rejouer sans améliorer son meilleur score ne crée pas de nouveaux crédits.
 
-Tout est **cosmétique**. Les familiers n'agissent pas sur les dalles, les traces s'effacent derrière les pas et la parure reste attachée à la sortie. Les lumières éclairent réellement de leur couleur. Aucun objet ne change les règles, la difficulté, les indices ou les records.
+Les **tenues et familiers sont cosmétiques**. Le rayon **Expéditions** est distinct : il vend le pack de niveaux des Archives, sans équiper d'objet. Son prix est déduit une seule fois du solde, après confirmation ; le serveur conserve le droit d'accès avec le compte.
 
 ### Le bestiaire
 
@@ -151,7 +157,7 @@ Ils ne flottent pas sur place : le gréement leur applique un retard de suivi �
 
 Le fonctionnement, l'économie et l'ajout de collections ou de familiers sont décrits dans [docs/boutique.md](docs/boutique.md).
 
-## Les trente-neuf passages
+## Les quarante-quatre passages
 
 Les trois premiers mondes gardent leurs passages d'origine et leurs **épreuves**. Boréale prolonge cette progression avec cinq passages qui introduisent la glisse puis la combinent aux mécanismes existants.
 
@@ -164,6 +170,8 @@ Les trois premiers mondes gardent leurs passages d'origine et leurs **épreuves*
 - **Espace · niveaux 30 à 34 :** Le sas orbital ; La station en transit ; Le puits des parallaxes ; L'astrolabe brisé ; Le cœur de la singularité. Cinq volumes 3 × 3 × 3, chacun avec ses tunnels verticaux et sa relique facultative. Voir [le guide de l'espace](docs/espace.md).
 
 - **Espace, Lune · niveaux 35 à 39 :** Le premier clair de Lune ; La mer de la Tranquillité ; La ligne du terminateur ; La face cachée ; La couronne de sélénite. Cinq lunes opaques, des pistes uniquement extérieures et une gravité locale qui suit chaque face. Les cinq stations à tunnels restent inchangées.
+
+- **Archives des Échos · pack, niveaux 40 à 44 :** Le vestibule des heures ; La galerie palimpseste ; Le pont des revers ; La chambre de résonance ; Le dernier souvenir. Deux époques, des chronolithes et des fragments de mémoire. Le pack coûte 45 000 points et reste testable gratuitement en mode développeur local.
 
 - **Passages secrets · six salles annexes :** La crypte des racines (sous La vigie, 10) ; La salle noyée (sous L'estran, 17) ; La veine de magma (sous Le pont des braises, 19) ; Le cœur éteint (sous Le passage sacrifié, 24) ; Le lac sous la glace (sous Le pont des séracs, 28) ; La caverne sous les aurores (sous La couronne boréale, 29). Chacune reprend la règle de son monde en plus dur, cache une relique en cul-de-sac et remet un compagnon exclusif. Voir [les passages secrets](docs/passages-secrets.md).
 

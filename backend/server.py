@@ -7,6 +7,7 @@ from http import HTTPStatus
 from http.cookies import SimpleCookie, CookieError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import ipaddress
 import mimetypes
 import os
 from pathlib import Path
@@ -19,15 +20,19 @@ try:
     from .engine import Game, GameError, LEVELS, SECRET_LEVELS
     from .space import SpaceGame, SPACE_LEVELS, SPACE_LEVEL_BY_ID
     from .lunar import LunarGame, LUNAR_LEVELS, LUNAR_LEVEL_BY_ID
+    from .packs import PACKS
+    from .echoes import EchoGame, ECHO_LEVELS, ECHO_LEVEL_BY_ID
 except ImportError:
     from accounts import AccountStore, AccountError, SESSION_SECONDS
     from engine import Game, GameError, LEVELS, SECRET_LEVELS
     from space import SpaceGame, SPACE_LEVELS, SPACE_LEVEL_BY_ID
     from lunar import LunarGame, LUNAR_LEVELS, LUNAR_LEVEL_BY_ID
+    from packs import PACKS
+    from echoes import EchoGame, ECHO_LEVELS, ECHO_LEVEL_BY_ID
 
 DIST = Path(__file__).resolve().parent.parent / "dist"
 MAX_BODY = 64 * 1024
-CAMPAIGN_LEVELS = LEVELS + SPACE_LEVELS + LUNAR_LEVELS
+CAMPAIGN_LEVELS = LEVELS + SPACE_LEVELS + LUNAR_LEVELS + ECHO_LEVELS
 
 
 class GameServer(ThreadingHTTPServer):
@@ -35,6 +40,7 @@ class GameServer(ThreadingHTTPServer):
 
     def __init__(self, address, handler=None, dist=None, accounts_path=None):
         super().__init__(address, handler or Handler)
+        self.allow_dev = address[0] in {"127.0.0.1", "::1", "localhost"}
         self.games = {}
         self.game_owners = {}
         self.game_lock = threading.RLock()
@@ -107,7 +113,25 @@ class Handler(BaseHTTPRequestHandler):
         if (not isinstance(game_id, str) or game_id not in self.server.games
                 or self.server.game_owners.get(game_id) != self.account["user"]["id"]):
             raise LookupError("Cette partie n’existe plus. Relancez le niveau.")
-        return self.server.games[game_id]
+        game = self.server.games[game_id]
+        self._check_pack_access(game)
+        return game
+
+    def _check_pack_access(self, game):
+        pack_id = game.level.public().get("packId")
+        if pack_id and pack_id not in self.account.get("packs", []) and not self._local_dev_request():
+            raise AccountError(403, "Cette expedition necessite son pack de niveaux dans la boutique.")
+
+    def _local_dev_request(self):
+        return (self.server.allow_dev and self.headers.get("X-Lumen-Dev") == "1"
+                and ipaddress.ip_address(self.client_address[0]).is_loopback)
+
+    def _game_state(self, game, state=None):
+        state = game.state() if state is None else state
+        pack_id = game.level.public().get("packId")
+        if pack_id:
+            state["packPreview"] = pack_id not in self.account.get("packs", [])
+        return state
 
     def _limit(self, bucket, limit, seconds, key=None):
         with self.server.auth_lock:
@@ -160,7 +184,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Lumen-Account")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Lumen-Account, X-Lumen-Dev")
         self.send_header("Content-Length", "0")
         self.end_headers()
 
@@ -182,7 +206,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/levels":
             return self._json(200, {"levels": [level.public() for level in CAMPAIGN_LEVELS],
-                                    "secrets": [level.public() for level in SECRET_LEVELS]})
+                                    "secrets": [level.public() for level in SECRET_LEVELS],
+                                    "packs": list(PACKS.values())})
         if parsed.path == "/api/game":
             try:
                 params = parse_qs(parsed.query)
@@ -190,8 +215,10 @@ class Handler(BaseHTTPRequestHandler):
                 if len(values) != 1:
                     raise GameError("Identifiant de partie attendu.")
                 with self.server.game_lock:
-                    state = self._get_game(values[0]).state()
+                    state = self._game_state(self._get_game(values[0]))
                 return self._json(200, state)
+            except AccountError as exc:
+                return self._error(exc.status, str(exc))
             except GameError as exc:
                 return self._error(400, str(exc))
             except LookupError as exc:
@@ -202,7 +229,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
-        if path in {"/api/account/register", "/api/account/login", "/api/account/logout", "/api/account/save"}:
+        if path in {"/api/account/register", "/api/account/login", "/api/account/logout", "/api/account/save", "/api/account/pack"}:
             return self._account_post(path)
         if path not in {"/api/game", "/api/action"}:
             return self._error(404, "Cette route n’existe pas.")
@@ -220,7 +247,10 @@ class Handler(BaseHTTPRequestHandler):
                     factory = SpaceGame if isinstance(level_id, str) and level_id in SPACE_LEVEL_BY_ID else Game
                     if isinstance(level_id, str) and level_id in LUNAR_LEVEL_BY_ID:
                         factory = LunarGame
+                    if isinstance(level_id, str) and level_id in ECHO_LEVEL_BY_ID:
+                        factory = EchoGame
                     game = factory(level_id)
+                    self._check_pack_access(game)
                     if len(self.server.games) >= 256:
                         oldest = next(iter(self.server.games))
                         del self.server.games[oldest]
@@ -237,7 +267,7 @@ class Handler(BaseHTTPRequestHandler):
                     if "to" in body and type(body["to"]) is not int:
                         raise GameError("Le numéro du vide doit être un entier.")
                     state = game.act(body.get("type"), body.get("index"), body.get("to"))
-            return self._json(200, state)
+            return self._json(200, self._game_state(game, state))
         except AccountError as exc:
             return self._error(exc.status, str(exc))
         except GameError as exc:
@@ -286,6 +316,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.server.accounts.logout(self._token())
                 self._set_session("")
                 return self._json(200, {"ok": True})
+            if path.endswith("/pack"):
+                if set(body) != {"packId", "revision", "userId"}:
+                    raise AccountError(400, "Parametres d'achat invalides.")
+                self._limit("pack", 15, 60)
+                return self._json(200, self.server.accounts.purchase_pack(
+                    self._token(), body["packId"], body["revision"], body["userId"]))
             if set(body) != {"save", "revision", "userId"} or not isinstance(body["userId"], str):
                 raise AccountError(400, "Parametres de sauvegarde invalides.")
             self._limit("save", 120, 60)

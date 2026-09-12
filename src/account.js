@@ -27,6 +27,7 @@ export function emptySave() {
 export class ProgressProfile {
   constructor(account, storage, request = accountRequest) {
     this.user = account.user;
+    this.packs = [...(account.packs || [])];
     this.storage = storage;
     this.memory = new Map();
     this.request = request;
@@ -39,6 +40,7 @@ export class ProgressProfile {
     this.blocked = false;
     this.pending = null;
     this.inFlight = null;
+    this.packInFlight = null;
     this.timer = null;
     if (this.user) {
       if (account.save && account.save.version !== SAVE_VERSION) throw new Error('Cette sauvegarde utilise une autre version du jeu.');
@@ -143,6 +145,46 @@ export class ProgressProfile {
       this.error = error.message;
       throw error;
     } finally { this.emit(); }
+  }
+
+  purchasePack(packId) {
+    if (this.packInFlight) return this.packInFlight;
+    this.packInFlight = this.buyPack(packId).finally(() => { this.packInFlight = null; });
+    return this.packInFlight;
+  }
+
+  async buyPack(packId) {
+    await this.flush();
+    if (!this.user || this.blocked) throw new Error(this.error || 'Connectez-vous pour acheter une exp\u00e9dition.');
+    const before = this.getSave();
+    this.status = 'saving'; this.emit();
+    this.inFlight = this.request('/api/account/pack', { packId, revision: this.revision, userId: this.user.id }).then(result => {
+      this.packs = [...(result.packs || [])];
+      this.revision = this.pendingRevision = result.revision;
+      // Une sauvegarde arrivee pendant l'achat garde ses changements et le debit confirme.
+      if (this.pending) {
+        const charged = (result.save.wardrobe.spent || 0) - (before.wardrobe.spent || 0);
+        this.pending = { ...this.pending, wardrobe: { ...this.pending.wardrobe,
+          spent: (this.pending.wardrobe.spent || 0) + charged } };
+        this.install(this.pending);
+        this.put('outbox', { save: this.pending, revision: result.revision });
+      } else {
+        this.install(result.save);
+        this.remove('outbox');
+      }
+      if (!this.blocked) { this.status = this.pending ? 'pending' : 'saved'; this.error = ''; }
+      return result;
+    }).catch(error => {
+      if (!this.blocked) {
+        this.status = error.status === 409 ? 'conflict' : error.status === 401 ? 'expired' : error.status === 400 ? 'saved' : 'offline';
+        this.blocked = [409, 401].includes(error.status);
+        this.error = error.message;
+      }
+      throw error;
+    }).finally(() => { this.inFlight = null; this.emit(); });
+    const result = await this.inFlight;
+    if (this.pending) await this.flush();
+    return result;
   }
 
   async reset() {

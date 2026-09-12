@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Map as MapIcon, RotateCcw, ShieldAlert, Box, Layers3, ArrowUp, ArrowDown, Moon, Focus } from 'lucide-react';
+import { Map as MapIcon, RotateCcw, ShieldAlert, Box, Layers3, ArrowUp, ArrowDown, Moon, Focus, Hourglass, Sunrise, Gem } from 'lucide-react';
 import { createGameScene } from './scene.js';
 import { GameAudio } from './audio.js';
 import HomeScreen from './HomeScreen.jsx';
@@ -15,10 +15,10 @@ import { accountRequest, ProgressProfile, SESSION_EXPIRED_EVENT } from './accoun
 import AccountPanel, { AccountButton, AccountGate } from './AccountPanel.jsx';
 
 /** Dev mode lifts every padlock; otherwise the campaign rules decide. */
-const isOpen = (levels, progress, levelId, secrets = []) => {
+const isOpen = (levels, progress, levelId, secrets = [], ownedPacks = []) => {
   const room = secrets.find(item => item.id === levelId);
   if (room) return DEV_MODE || Boolean(progress?.[room.host]?.secretFound);
-  return passageOpen(levels, progress, levelId, DEV_MODE);
+  return passageOpen(levels, progress, levelId, DEV_MODE, ownedPacks);
 };
 
 function Icon({ name, size = 20, ...props }) {
@@ -45,7 +45,7 @@ function Icon({ name, size = 20, ...props }) {
 }
 
 async function gameApi(path, body, userId) {
-  const response = await fetch(path, { credentials: 'same-origin', headers: { 'X-Lumen-Account': userId, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+  const response = await fetch(path, { credentials: 'same-origin', headers: { 'X-Lumen-Account': userId, ...(DEV_MODE ? { 'X-Lumen-Dev': '1' } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) },
     ...(body ? { method: 'POST', body: JSON.stringify(body) } : {}) });
   const data = await response.json();
   if (response.status === 401) window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
@@ -137,6 +137,8 @@ function GameApp({ profile, onAccountChange }) {
   }, [profile]);
   const [screen, setScreen] = useState('home');
   const [levels, setLevels] = useState([]);
+  const [levelPacks, setLevelPacks] = useState([]);
+  const [ownedPacks, setOwnedPacks] = useState(() => [...profile.packs]);
   const [game, setGame] = useState(null);
   const [interactions, setInteractions] = useState(null);
   const [mode, setMode] = useState('slide');
@@ -198,6 +200,7 @@ function GameApp({ profile, onAccountChange }) {
   const spatial = game?.boardKind === 'volume';
   const lunar = game?.boardKind === 'surface';
   const cubic = spatial || lunar;
+  const echoes = game?.echoes;
   const dimensions = boardShape(game);
   const worldLevels = levels.filter(item => item.biome === biome.id);
   const chapter = Math.max(0, levels.findIndex(l => l.id === (room ? room.host : game?.levelId)));
@@ -210,7 +213,7 @@ function GameApp({ profile, onAccountChange }) {
     setGame(next);
     save('lumen-session', next.id);
     save('lumen-level', next.levelId);
-    if (next.won && !next.lost && recordVictory) {
+    if (next.won && !next.lost && !next.packPreview && recordVictory) {
       const finished = passage(next.levelId);
       const seconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
       const run = finished && scoreRun({ par: finished.par, stepPar: finished.stepPar, moves: next.moves,
@@ -288,7 +291,7 @@ function GameApp({ profile, onAccountChange }) {
   }
   async function loadLevel(levelId) {
     if (busyRef.current) return;
-    if (!isOpen(levelsRef.current, progressRef.current, levelId, secretsRef.current)) {
+    if (!isOpen(levelsRef.current, progressRef.current, levelId, secretsRef.current, profile.packs)) {
       setNotice('Ce passage est encore verrouillé : terminez le précédent pour l’ouvrir.');
       return false;
     }
@@ -320,7 +323,7 @@ function GameApp({ profile, onAccountChange }) {
   }
   async function startExpedition(levelId) {
     if (busyRef.current) return;
-    if (!isOpen(levelsRef.current, progressRef.current, levelId, secretsRef.current)) return;
+    if (!isOpen(levelsRef.current, progressRef.current, levelId, secretsRef.current, profile.packs)) return;
     if (game?.levelId !== levelId || game?.won || game?.lost) {
       if (!await loadLevel(levelId)) return;
     } else if (pauseStarted.current !== null) {
@@ -348,7 +351,7 @@ function GameApp({ profile, onAccountChange }) {
       pendingNotice.current = walking ? message : null;
       persist(next);
       setNotice(walking ? 'Lumen suit la lumière.' : message);
-      if (!next.walkPath?.length) audio.current?.play(type === 'hint' ? 'hint' : 'slide');
+      if (!next.walkPath?.length) audio.current?.play(['hint', 'echo'].includes(type) ? 'hint' : 'slide');
       if (type === 'reset') { setStartedAt(Date.now()); setElapsed(0); setWinDismissed(false); setRunScore(null); }
       if (!next.won) setWinDismissed(false);
       if (!scene.current) setWorking(false);
@@ -417,18 +420,19 @@ function GameApp({ profile, onAccountChange }) {
         const data = await api('/api/levels');
         if (!alive.current) return;
         setLevels(data.levels);
+        setLevelPacks(data.packs || []);
         setSecrets(data.secrets || []);
         secretsRef.current = data.secrets || [];
         const storedLevel = readSaved('lumen-level', null);
-        const levelId = isOpen(data.levels, progressRef.current, storedLevel, data.secrets)
-          ? storedLevel : frontierLevel(data.levels, progressRef.current)?.id;
+        const levelId = isOpen(data.levels, progressRef.current, storedLevel, data.secrets, profile.packs)
+          ? storedLevel : frontierLevel(data.levels, progressRef.current, profile.packs)?.id;
         let next;
         const savedId = readSaved('lumen-session', null);
         if (savedId) {
           try { next = await api(`/api/game?id=${encodeURIComponent(savedId)}`); } catch { /* Sessions expire when Python restarts. */ }
         }
         // A session kept from before a reset can sit on a passage that is locked again.
-        if (next && !isOpen(data.levels, progressRef.current, next.levelId, data.secrets)) next = null;
+        if (next && !isOpen(data.levels, progressRef.current, next.levelId, data.secrets, profile.packs)) next = null;
         if (!next) next = await api('/api/game', { levelId });
         if (!alive.current) return;
         requestInFlight.current = false;
@@ -453,6 +457,7 @@ function GameApp({ profile, onAccountChange }) {
         onVictory: () => audio.current?.play('win'),
         onDefeat: () => { if (alive.current) { setDefeatReady(true); audio.current?.play('error'); } },
         onDescent: () => audio.current?.play('hint'),
+        onMemory: () => audio.current?.play('hint'),
         onInteractions: setInteractions,
         onOrbit: () => { setView('free'); setSurfaceView('free'); },
         onReady: () => setReady(true),
@@ -484,7 +489,7 @@ function GameApp({ profile, onAccountChange }) {
       const parent = probe.offsetParent;
       if (!parent || !scene.current) return;
       scene.current.setSafeArea({
-        top: probe.offsetTop + (['volume', 'surface'].includes(game?.boardKind) ? 86 : 0),
+        top: probe.offsetTop + (['volume', 'surface', 'echoes'].includes(game?.boardKind) ? 86 : 0),
         left: probe.offsetLeft,
         right: parent.clientWidth - probe.offsetLeft - probe.offsetWidth,
         bottom: parent.clientHeight - probe.offsetTop - probe.offsetHeight,
@@ -511,7 +516,7 @@ function GameApp({ profile, onAccountChange }) {
       if (current.screen !== 'game' || current.modal || current.arrival || event.ctrlKey || event.metaKey || event.altKey || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
       if (event.target.closest('button') && ['Enter', ' '].includes(event.key)) return;
       const key = event.key.toLowerCase();
-      if ([' ', 'enter', 'z', 'r', 'h', 'm', 't', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown'].includes(key)) event.preventDefault();
+      if ([' ', 'enter', 'z', 'r', 'h', 'm', 't', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown'].includes(key)) event.preventDefault();
       if (event.repeat || busyRef.current) return;
       if (current.game?.lost && !['r', 'm'].includes(key)) return;
       if (key === ' ') current.toggleMode();
@@ -520,6 +525,7 @@ function GameApp({ profile, onAccountChange }) {
       else if (key === 'h') current.act('hint');
       else if (key === 'm') current.toggleSound();
       else if (key === 't') { if (current.game?.canTide) current.act('tide'); }
+      else if (key === 'e') { if (current.game?.echoes?.canShift) current.act('echo'); }
       else if (key === 'enter') {
         if (current.selected >= 0 && current.mode === 'slide') current.handleTile(current.selected);
         else current.act('walk');
@@ -572,6 +578,7 @@ function GameApp({ profile, onAccountChange }) {
   const displayedInteractions = interactions && interactions.gameId === game?.id ? interactions : null;
   const relicTaken = displayedInteractions?.relicTaken ?? Boolean(game?.relic?.taken);
   const gatesOpen = displayedInteractions?.gatesOpen ?? game?.gatesOpen;
+  const memoryIds = displayedInteractions?.memoryIds ?? echoes?.fragments.filter(fragment => fragment.taken).map(fragment => fragment.id) ?? [];
   const slideDestinations = game?.slideOptions?.filter(option => option.index === slideChoice) || [];
   const hoveredHazard = game?.tiles[hovered]?.hazard;
   const compass = { N: 'le nord', E: 'l’est', S: 'le sud', W: 'l’ouest' };
@@ -588,14 +595,29 @@ function GameApp({ profile, onAccountChange }) {
     : hoveredHazard === 'gate' ? (gatesOpen ? 'Porte ouverte · tant que le sceau reste actif' : 'Porte close · activez son sceau pour passer')
     : hoveredHazard === 'weight' ? 'Pierre de lest · seule elle peut peser sur un sceau'
     : hoveredHazard === 'submerged' ? (game.tide === 'basse' ? 'Dalle émergée · praticable tant que la marée est basse' : 'Dalle immergée · faites descendre la marée')
-    : game?.relic && game.relic.index === hovered && !relicTaken ? `Trésor · ${game.relic.name}, un détour facultatif`
+    : game?.tiles[hovered]?.chronolith ? 'Chronolithe · passage entre les époques'
+    : echoes?.fragments.some(fragment => fragment.index === hovered && fragment.phase === echoes.phase && !memoryIds.includes(fragment.id)) ? 'Fragment de mémoire'
+    : game?.relic && game.relic.index === hovered && !relicTaken && (game.relic.phase === undefined || game.relic.phase === echoes?.phase) ? `Trésor · ${game.relic.name}, un détour facultatif`
     : nextGuardCell ? 'Le crocodile viendra ici au prochain déplacement de dalle' : '';
   const wallet = walletTotal(progress);
   const credits = spendable(progress, wardrobe);
   function buyCosmetic(itemId) {
+    if (busyRef.current) return { ok: false, reason: 'Une opération est déjà en cours.' };
     const result = purchase(wardrobe, itemId, spendable(progressRef.current, wardrobe));
     if (result.ok) setWardrobe(result.wardrobe);
     return result;
+  }
+  async function buyLevelPack(packId) {
+    if (busyRef.current) return { ok: false, reason: 'Une opération est déjà en cours.' };
+    setWorking(true);
+    try {
+      await profile.purchasePack(packId);
+      if (!alive.current) return { ok: false, reason: 'La session a été fermée.' };
+      setWardrobe(profile.getSave().wardrobe);
+      setOwnedPacks([...profile.packs]);
+      return { ok: true };
+    } catch (failure) { return { ok: false, reason: failure.message }; }
+    finally { if (alive.current) setWorking(false); }
   }
   function equipCosmetic(itemId) {
     const next = equip(wardrobe, itemId);
@@ -609,9 +631,10 @@ function GameApp({ profile, onAccountChange }) {
     catch (failure) { setAccountError(failure.message); setAccountOpen(true); setWorking(false); }
   }
   const nextLevel = room ? null : levels[chapter + 1];
+  const nextPackLocked = nextLevel?.packId && !ownedPacks.includes(nextLevel.packId) && !DEV_MODE;
   const secretFound = Boolean(progress[level?.id]?.secretFound);
   const hostRoom = level?.secret ? secrets.find(item => item.host === level.id) : null;
-  const nextJourney = room ? 'Remonter à la lumière' : nextLevel ? (nextLevel.biome === biome.id ? 'Poursuivre le voyage' : getBiome(nextLevel.biome).arrival) : 'Retrouver la carte';
+  const nextJourney = room ? 'Remonter à la lumière' : nextPackLocked ? 'Retrouver la carte' : nextLevel ? (nextLevel.biome === biome.id ? 'Poursuivre le voyage' : getBiome(nextLevel.biome).arrival) : 'Retrouver la carte';
   const rewardName = room ? ITEMS[room.reward]?.name || room.reward : '';
   const lunarHover = lunar ? (hovered === -1 || hovered === dimensions.finish || mode === 'walk' && hovered >= 0
     ? `${lunarLabel(hovered)}${hovered === game.hero ? ' · Lumen' : game.reachable.includes(hovered) ? ' · chemin relié' : ''}`
@@ -620,9 +643,9 @@ function GameApp({ profile, onAccountChange }) {
   const hoverText = lunarHover || hazardText || (hovered === game?.hero ? `${spatial ? 'Cube' : 'Dalle'} occupé · déplacement verrouillé` : hovered === dimensions.finish ? 'Le portail de lumière · sortie' : hovered >= 0 ? `${cellLabel(game, hovered)}${!game?.tiles[hovered] ? ' · vide disponible' : game?.slidable.includes(hovered) ? ' · peut glisser' : game?.reachable.includes(hovered) ? ' · chemin accessible' : ''}` : spatial ? 'STATION ORBITALE · 26 CUBES · 1 VIDE' : 'Glissez pour tourner · molette ou pincement pour zoomer · clic molette pour changer de mode');
 
   return <>
-    {screen === 'home' && <HomeScreen levels={levels} secrets={secrets} progress={progress} currentGame={game} busy={busy} error={error} onStart={startExpedition} onSound={toggleSound} sound={sound} wardrobe={wardrobe} credits={credits} onBuy={buyCosmetic} onEquip={equipCosmetic} onReset={resetAccount} accountControl={<AccountButton profile={profile} status={accountStatus} onClick={() => { if (!busyRef.current) setAccountOpen(true); }}/>} connected={Boolean(profile.user)}/>}
+    {screen === 'home' && <HomeScreen levels={levels} secrets={secrets} progress={progress} currentGame={game} busy={busy} error={error} onStart={startExpedition} onSound={toggleSound} sound={sound} wardrobe={wardrobe} credits={credits} onBuy={buyCosmetic} onBuyPack={buyLevelPack} packs={levelPacks} ownedPacks={ownedPacks} onEquip={equipCosmetic} onReset={resetAccount} accountControl={<AccountButton profile={profile} status={accountStatus} onClick={() => { if (!busyRef.current) setAccountOpen(true); }}/>} connected={Boolean(profile.user)}/>}
     {accountOpen && <AccountPanel profile={profile} status={accountStatus} onChange={onAccountChange} onClose={() => { setAccountOpen(false); setAccountError(''); }} initialError={accountError}/>}
-    <main className={`game-shell ${spatial ? 'is-volume' : lunar ? 'is-surface' : ''}`} data-biome={biome.id} data-region={game?.region} hidden={screen !== 'game'}>
+    <main className={`game-shell ${spatial ? 'is-volume' : lunar ? 'is-surface' : ''}`} data-biome={biome.id} data-epoch={echoes?.phase} data-region={game?.region} hidden={screen !== 'game'}>
     <div className="grain" aria-hidden="true" />
     <header className="topbar">
       <a className="brand" href="#" onClick={e => { e.preventDefault(); returnToMap(); }} aria-label="Lumen, revenir à la carte">
@@ -631,7 +654,7 @@ function GameApp({ profile, onAccountChange }) {
       </a>
       <nav className="chapter-nav" aria-label="Chapitres">
         {worldLevels.map(item => {
-          const shut = !isOpen(levels, progress, item.id);
+          const shut = !isOpen(levels, progress, item.id, secrets, ownedPacks);
           return <button key={item.id} disabled={busy || shut} className={`chapter-tab ${game?.levelId === item.id ? 'active' : ''} ${shut ? 'locked' : ''}`} onClick={() => loadLevel(item.id)} aria-label={`Niveau ${item.chapter} : ${item.name}${shut ? ', verrouillé' : ''}`} aria-current={game?.levelId === item.id ? 'step' : undefined}>
             <span>{shut ? <Icon name="lock" size={13}/> : progress[item.id]?.completed ? <Icon name="check" size={14}/> : String(item.biomeLevel).padStart(2, '0')}</span>
             <i />
@@ -697,6 +720,16 @@ function GameApp({ profile, onAccountChange }) {
         </select>
         <button type="button" disabled={busy} title="Voir Lumen" aria-label="Voir Lumen" onClick={() => { setSurfaceView(game.heroFace); setView('free'); scene.current?.setSurfaceView('hero'); }}><Focus size={18}/></button>
       </div>}
+      {echoes && <div className="volume-controls echo-controls">
+        <div className="volume-modes echo-period" role="group" aria-label="Époque du plateau">
+          <button disabled={busy || !echoes.canShift || echoes.phase === 0} aria-pressed={echoes.phase === 0} title={echoes.canShift ? 'Revenir aux ruines' : 'Rejoignez un chronolithe'} onClick={() => act('echo')}><Hourglass size={16}/>Ruines</button>
+          <button disabled={busy || !echoes.canShift || echoes.phase === 1} aria-pressed={echoes.phase === 1} title={echoes.canShift ? 'Réveiller la cité ancienne' : 'Rejoignez un chronolithe'} onClick={() => act('echo')}><Sunrise size={16}/>Apogée</button>
+        </div>
+        <div className="echo-memories" role="status" aria-label={`Fragments de mémoire : ${memoryIds.length} sur ${echoes.fragments.length}`}>
+          {echoes.fragments.map(fragment => <span key={fragment.id} className={memoryIds.includes(fragment.id) ? 'found' : ''} title={`${fragment.name} · ${fragment.phase ? 'Apogée' : 'Ruines'}`}><Gem size={16}/></span>)}
+          <strong>{memoryIds.length}/{echoes.fragments.length}</strong>
+        </div>
+      </div>}
       <div className="world-caption"><span className="coordinate">360°</span><p>{hoverText}</p><span className="coordinate">{cubic ? '3 × 3 × 3' : '4 × 4'}</span></div>
       <div className="board-legend"><span><i className={dangerousRoute ? 'danger' : 'mint'}/> {dangerousRoute ? 'Trajet dangereux' : 'Trajet sûr'}</span><span><i className="gold"/> Aventurier</span><span className={emptyCount > 1 ? 'extra-empty' : ''}><i className="empty"/> {emptyCount > 1 ? `${emptyCount} vides disponibles` : 'Case vide'}</span>{game?.canTide && <span className="tide-chip"><Icon name="tide" size={14}/> Marée {game.tide}</span>}{game?.relic && <span className={`relic-chip ${relicTaken ? 'found' : ''}`}><Icon name="relic" size={14}/> {relicTaken ? game.relic.name : 'Trésor à trouver'}</span>}</div>
     </div>
@@ -736,6 +769,7 @@ function GameApp({ profile, onAccountChange }) {
       <div className="victory-rays" aria-hidden="true">{Array.from({ length: 12 }, (_, i) => <i key={i} style={{ '--a': `${i * 30}deg`, animationDelay: `${i * .05}s` }}/>)}</div>
       <div className="victory-symbol"><Icon name="diamond" size={32}/></div>
       <p className="eyebrow">LE PASSAGE EST OUVERT</p><h2>La lumière vous attend.</h2><p>{game.moves} déplacements · {game.steps} pas · {minutes}:{seconds}</p>
+      {game.packPreview && <p className="victory-rumour">Essai développeur · aucun point ni record enregistré.</p>}
       {game.relic && <p className={`victory-relic ${game.relic.taken ? 'found' : ''}`}><Icon name="relic" size={18}/>{game.relic.taken ? `${game.relic.name} rejoint votre carnet.` : `${game.relic.name} dort encore ici. Un détour vous attend.`}</p>}
       {room && <p className="victory-relic found victory-reward"><Icon name="relic" size={18}/>{rewardName} vous a suivi jusqu’ici. Retrouvez-le dans la ménagerie.</p>}
       {hostRoom && !secretFound && <p className="victory-rumour">Quelque chose sonnait creux dans ce passage.</p>}
@@ -749,7 +783,7 @@ function GameApp({ profile, onAccountChange }) {
           ? <>+{runScore.gained.toLocaleString('fr-FR')} au portefeuille · <b>{wallet.toLocaleString('fr-FR')} pts</b></>
           : <>Votre record ici reste {runScore.record.toLocaleString('fr-FR')} · portefeuille <b>{wallet.toLocaleString('fr-FR')} pts</b></>}</p>
       </div>}
-      <button disabled={busy} className="primary-button" onClick={() => room ? ascend() : nextLevel ? loadLevel(nextLevel.id) : returnToMap()}>{nextJourney}<Icon name="arrow" size={18}/></button>
+      <button disabled={busy} className="primary-button" onClick={() => room ? ascend() : nextLevel && !nextPackLocked ? loadLevel(nextLevel.id) : returnToMap()}>{nextJourney}<Icon name="arrow" size={18}/></button>
       <button className="victory-map" disabled={busy} onClick={returnToMap}>Voir ma progression sur la carte →</button>
     </section></div>}
 
@@ -799,9 +833,9 @@ function GameApp({ profile, onAccountChange }) {
       <button className="primary-button" onClick={closeModal}>L’aventure commence <Icon name="arrow" size={18}/></button>
     </Dialog>}
     {modal === 'levels' && <Dialog onClose={closeModal} title="Choisir un chapitre">
-      <p className="eyebrow">LES CHEMINS OUBLIÉS</p><h2>Cinq mondes.<br/>{levels.length || 39} passages.</h2><p className="dialog-intro">De la jungle aux glaces de Boréale, puis jusqu’aux stations de l’espace et aux chemins qui entourent la Lune.</p>
+      <p className="eyebrow">LES CHEMINS OUBLIÉS</p><h2>Six mondes.<br/>{levels.length || 44} passages.</h2><p className="dialog-intro">Des ruines de la jungle aux chemins lunaires, puis aux Archives des Échos, où les pierres traversent le temps.</p>
       <div className="level-list">{BIOMES.map(world => <React.Fragment key={world.id}><h3 className="level-world-heading">{world.symbol} {world.name} · monde {world.world}</h3>{levels.filter(item => item.biome === world.id).map(item => {
-        const shut = !isOpen(levels, progress, item.id);
+        const shut = !isOpen(levels, progress, item.id, secrets, ownedPacks);
         return <button className={`level-choice ${game?.levelId === item.id ? 'current' : ''} ${shut ? 'locked' : ''}`} key={item.id} disabled={busy || shut} onClick={() => loadLevel(item.id)}><span className="level-numeral">{String(item.chapter).padStart(2, '0')}</span><span><strong>{item.name}</strong><small>{shut ? `Verrouillé · terminez le niveau ${String(item.chapter - 1).padStart(2, '0')}` : `${item.difficulty} · passage ${item.biomeLevel} / ${levels.filter(other => other.biome === item.biome).length}${item.relicName ? ` · ${progress[item.id]?.relic ? '✦' : '✧'} ${item.relicName}` : ''}`}</small></span><Icon name={shut ? 'lock' : progress[item.id]?.completed ? 'check' : 'arrow'} size={22}/></button>;
       })}</React.Fragment>)}</div>
       <p className="dialog-footnote">{DEV_MODE ? 'Mode dév : tous les passages sont ouverts, y compris ceux que la campagne n’a pas encore déverrouillés.' : 'Les passages s’ouvrent l’un après l’autre : terminez un niveau pour déverrouiller le suivant.'} Vos records restent dans ce navigateur.</p>

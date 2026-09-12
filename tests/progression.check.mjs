@@ -21,7 +21,8 @@ const render = await load('HomeScreen.jsx');
 /** The campaign as `/api/levels` serves it: chapter order, worlds in contiguous blocks.
  *  Built from `BIOMES`, so a world added to the campaign is covered without a rewrite. */
 const PER_WORLD = 5;
-const LEVELS = BIOMES.flatMap((world, index) => Array.from({ length: PER_WORLD }, (_, i) => {
+const FREE_WORLDS = BIOMES.filter(world => !world.packId);
+const LEVELS = FREE_WORLDS.flatMap((world, index) => Array.from({ length: PER_WORLD }, (_, i) => {
   const chapter = index * PER_WORLD + i + 1;
   return { id: `n${chapter}`, chapter, biomeLevel: i + 1, biome: world.id,
     name: `Passage ${chapter}`, subtitle: 'Un chemin.', difficulty: 'Exploration', par: 5, stepPar: 9 };
@@ -31,6 +32,11 @@ LEVELS.push(...Array.from({ length: 5 }, (_, index) => ({
   id: `n${LUNAR_START + index + 1}`, chapter: LUNAR_START + index + 1,
   biomeLevel: PER_WORLD + index + 1, biome: 'space', boardKind: 'surface', region: 'moon',
   name: `Lune ${index + 1}`, subtitle: 'Un chemin de surface.', difficulty: 'Aventure', par: 5, stepPar: 12,
+})));
+const PACK_START = LEVELS.length;
+LEVELS.push(...Array.from({ length: 5 }, (_, index) => ({
+  id:`n${PACK_START + index + 1}`, chapter:PACK_START + index + 1, biomeLevel:index + 1,
+  biome:'echoes', packId:'echoes', name:`Archive ${index + 1}`, subtitle:'Deux époques.', difficulty:'Expert', par:5, stepPar:12,
 })));
 /** The levels of the nth world of the campaign. */
 const worldBlock = index => LEVELS.filter(level => level.biome === BIOMES[index].id);
@@ -42,6 +48,7 @@ const props = progress => ({
   levels: LEVELS, progress, currentGame: null, busy: false, error: '',
   onStart() {}, onSound() {}, sound: false, onBuy() {}, onEquip() {}, onReset() {},
   wardrobe: { ...EMPTY_WARDROBE, equipped: { ...DEFAULT_LOOK } }, credits: 0,
+  packs:[{id:'echoes',price:45000}], ownedPacks:[],
 });
 const screen = progress => render(props(progress));
 const numeral = chapter => String(chapter).padStart(2, '0');
@@ -77,14 +84,16 @@ const fresh = screen({});
 open(stop(fresh, firstWorld[0].chapter), `Compte neuf · passage ${numeral(firstWorld[0].chapter)}`);
 for (const level of firstWorld.slice(1)) shut(stop(fresh, level.chapter), `Compte neuf · passage ${numeral(level.chapter)}`);
 open(worldTab(fresh, BIOMES[0].id), `Compte neuf · onglet ${BIOMES[0].name}`);
-for (const world of BIOMES.slice(1)) shut(worldTab(fresh, world.id), `Compte neuf · onglet ${world.name}`);
+for (const world of FREE_WORLDS.slice(1)) shut(worldTab(fresh, world.id), `Compte neuf · onglet ${world.name}`);
+check(worldTab(fresh, 'echoes')?.includes('lock-mark'), 'Pack neuf · le verrou doit rester visible');
+check(worldTab(fresh, 'echoes')?.includes('Découvrir le pack'), 'Pack neuf · le monde doit mener à la boutique');
 open(play(fresh), 'Compte neuf · bouton Explorer');
 
 // One passage finished opens the next one, and stops there.
 const one = screen(finished(1));
 open(stop(one, 2), 'Passage 01 terminé · passage 02');
 shut(stop(one, 3), 'Passage 01 terminé · passage 03');
-for (const world of BIOMES.slice(1)) shut(worldTab(one, world.id), `Passage 01 terminé · onglet ${world.name}`);
+for (const world of FREE_WORLDS.slice(1)) shut(worldTab(one, world.id), `Passage 01 terminé · onglet ${world.name}`);
 
 // One passage short of the next world: the first world is open, the second is not.
 const almost = screen(finished(firstWorld.length - 1));
@@ -95,12 +104,12 @@ shut(worldTab(almost, BIOMES[1].id), `${BIOMES[0].name} presque finie · onglet 
 const secondWorld = worldBlock(1);
 const worldDone = screen(finished(firstWorld.length));
 open(worldTab(worldDone, BIOMES[1].id), `${BIOMES[0].name} terminée · onglet ${BIOMES[1].name}`);
-for (const world of BIOMES.slice(2)) shut(worldTab(worldDone, world.id), `${BIOMES[0].name} terminée · onglet ${world.name}`);
+for (const world of FREE_WORLDS.slice(2)) shut(worldTab(worldDone, world.id), `${BIOMES[0].name} terminée · onglet ${world.name}`);
 open(stop(worldDone, secondWorld[0].chapter), `${BIOMES[0].name} terminée · passage ${numeral(secondWorld[0].chapter)}`);
 shut(stop(worldDone, secondWorld[1].chapter), `${BIOMES[0].name} terminée · passage ${numeral(secondWorld[1].chapter)}`);
 
 // Nothing stays shut once the campaign is over.
-const allDone = screen(finished(LEVELS.length));
+const allDone = render({ ...props(finished(LEVELS.length)), ownedPacks:['echoes'] });
 check(!allDone.includes('lock-mark'), 'Campagne terminée · un cadenas subsiste');
 for (const world of BIOMES) open(worldTab(allDone, world.id), `Campagne terminée · onglet ${world.name}`);
 
@@ -108,6 +117,11 @@ const afterStations = screen(finished(LUNAR_START));
 open(stop(afterStations, LUNAR_START + 1), 'Stations terminées · première lune');
 shut(stop(afterStations, LUNAR_START + 2), 'Stations terminées · deuxième lune');
 check(afterStations.includes('data-region="moon"'), 'Lune · les nouvelles destinations ne sont pas identifiées');
+
+const packReady = render({ ...props(finished(PACK_START)), ownedPacks:['echoes'] });
+open(stop(packReady, PACK_START + 1), 'Pack acheté · première archive');
+shut(stop(packReady, PACK_START + 2), 'Pack acheté · deuxième archive');
+check(worldTab(screen(finished(PACK_START)), 'echoes')?.includes('lock-mark'), 'Campagne finie · le pack reste obligatoire');
 
 const lostGame = { levelId: LEVELS[0].id, historyLength: 1, moves: 0, won: false, lost: true };
 const afterCapture = render({ ...props({}), currentGame: lostGame });
@@ -133,7 +147,8 @@ check(appSource.includes('onReset={resetAccount}'), 'Remise à zéro · le carne
 globalThis.location = { search: '?dev', href: 'http://127.0.0.1:8765/?dev' };
 const devScreen = await load('HomeScreen.jsx', 'dev');
 delete globalThis.location;
-const dev = devScreen(props({}));
+const dev = devScreen({ ...props({}), ownedPacks:['echoes'] });
+open(worldTab(devScreen(props({})), 'echoes'), 'Mode dév · essai du pack sans achat');
 check(!dev.includes('lock-mark'), 'Mode dév · un cadenas subsiste alors que tout est ouvert');
 check(dev.includes('MODE DÉV'), 'Mode dév · rien ne signale la session à l’écran');
 for (const world of BIOMES) open(worldTab(dev, world.id), `Mode dév · onglet ${world.name}`);

@@ -13,6 +13,11 @@ import tempfile
 import threading
 import time
 
+try:
+    from .packs import PACKS
+except ImportError:
+    from packs import PACKS
+
 SESSION_SECONDS = 30 * 24 * 60 * 60
 DATA_FILE = Path(__file__).resolve().parent / "data" / "accounts.json"
 
@@ -110,7 +115,8 @@ class AccountStore:
     @staticmethod
     def _public(user: dict) -> dict:
         return {"user": {"id": user["id"], "username": user["username"]},
-                "save": deepcopy(user["save"]), "revision": user["revision"]}
+                "save": deepcopy(user["save"]), "revision": user["revision"],
+                "packs": list(user.get("packs", []))}
 
     def authenticate(self, username: object, password: object, *, register: bool = False, initial_save: object = None) -> tuple[dict, str]:
         username, password = self._credentials(username, password)
@@ -155,6 +161,33 @@ class AccountStore:
             if type(revision) is not int or revision != user["revision"]:
                 raise AccountError(409, "Une autre session a modifie la progression. Rechargez la sauvegarde du compte.")
             user["save"] = validated
+            user["revision"] += 1
+            self._write(data)
+            return self._public(user)
+
+    def purchase_pack(self, token: str, pack_id: object, revision: object, user_id: object) -> dict:
+        if not isinstance(pack_id, str) or pack_id not in PACKS:
+            raise AccountError(400, "Ce pack de niveaux n'existe pas.")
+        with self.lock:
+            data = self._read()
+            user = self._session(data, token)
+            if user_id != user["id"]:
+                raise AccountError(401, "Le compte actif a change. Reconnectez-vous.")
+            # Un nouvel essai apres une reponse perdue ne doit jamais redebiter le compte.
+            if pack_id in user.get("packs", []):
+                return self._public(user)
+            if type(revision) is not int or revision != user["revision"]:
+                raise AccountError(409, "Le carnet a change. Actualisez-le avant cet achat.")
+            snapshot = user["save"]
+            if snapshot is None:
+                raise AccountError(400, "Sauvegardez votre progression avant cet achat.")
+            wardrobe = snapshot["wardrobe"]
+            balance = sum(record.get("score", 0) for record in snapshot["progress"].values()) - wardrobe.get("spent", 0)
+            price = PACKS[pack_id]["price"]
+            if balance < price:
+                raise AccountError(400, f"Il manque {price - max(0, balance)} points disponibles pour ce pack.")
+            wardrobe["spent"] = wardrobe.get("spent", 0) + price
+            user["packs"] = [*user.get("packs", []), pack_id]
             user["revision"] += 1
             self._write(data)
             return self._public(user)

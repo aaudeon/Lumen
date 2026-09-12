@@ -29,6 +29,12 @@ export const BIOMES = [
     description: 'Des stations oubliées flottent entre les étoiles. Trois étages, six directions et un passage à retrouver en apesanteur.',
     arrival: 'Entrer en orbite', symbol: '✧',
   },
+  {
+    id: 'echoes', name: 'Échos', world: 'VI', title: 'Les Archives des Échos', packId: 'echoes',
+    headline: 'La cité oublie.', emphasis: 'Les pierres se souviennent.',
+    description: 'Au bord du temps, une cité conserve deux visages. Retrouvez les fragments dispersés entre ses ruines et son apogée.',
+    arrival: 'Ouvrir les Archives', symbol: '◈',
+  },
 ];
 
 export const getBiome = id => BIOMES.find(biome => biome.id === id) || BIOMES[0];
@@ -49,23 +55,31 @@ export function openCount(levels = [], progress = {}, allOpen = false) {
   return Math.min(open + 1, levels.length);
 }
 
-export function isOpen(levels, progress, levelId, allOpen = false) {
-  const index = (levels || []).findIndex(level => level.id === levelId);
-  return index >= 0 && index < openCount(levels, progress, allOpen);
+export function isOpen(levels, progress, levelId, allOpen = false, ownedPacks = []) {
+  const level = levels?.find(item => item.id === levelId);
+  if (!level) return false;
+  if (allOpen) return true;
+  if (level.packId && !ownedPacks.includes(level.packId)) return false;
+  const sequence = (levels || []).filter(item => (item.packId || null) === (level.packId || null));
+  const index = sequence.findIndex(item => item.id === levelId);
+  return index >= 0 && index < openCount(sequence, progress, allOpen);
 }
 
 /** The passage that has to be finished before `levelId` opens, if any. */
 export function unlockedBy(levels, levelId) {
-  const index = (levels || []).findIndex(level => level.id === levelId);
-  return index > 0 ? levels[index - 1] : null;
+  const level = levels?.find(item => item.id === levelId);
+  const sequence = (levels || []).filter(item => (item.packId || null) === (level?.packId || null));
+  const index = sequence.findIndex(item => item.id === levelId);
+  return index > 0 ? sequence[index - 1] : null;
 }
 
 /** Where to send a traveller who has no valid destination in mind: the frontier.
  *
  * Real progress only, deliberately. Dev mode lifts every padlock, but the traveller
  * still lands where the campaign actually left them, not on the last passage. */
-export function frontierLevel(levels = [], progress = {}) {
-  return levels[openCount(levels, progress) - 1] || levels[0];
+export function frontierLevel(levels = [], progress = {}, ownedPacks = []) {
+  const available = levels.filter(level => isOpen(levels, progress, level.id, false, ownedPacks));
+  return available.find(level => !progress[level.id]?.completed) || available.at(-1) || levels[0];
 }
 
 /** The keys this browser keeps. Clearing them all is starting over from scratch. */

@@ -64,6 +64,16 @@ opensOnTheWardrobe(wardrobeOf(['braise'], { cape: 'braise' }), ITEMS.braise.name
 opensOnTheWardrobe(wardrobeOf([], { hat: 'chapeau-fantome' }), ITEMS[DEFAULT_LOOK.hat].name,
   'Sauvegarde périmée');
 
+const pack = { id:'echoes', name:'Les Archives des Échos', price:45000, levelCount:5, description:'Une cité, deux époques.', image:'/echoes-pack.svg' };
+const packShop = (credits, ownedPacks=[]) => render({ wardrobe:wardrobeOf([]), credits, progress:{}, biome:'jungle', packs:[pack], ownedPacks, initialRoom:'packs', onExplorePack() {}, onClose() {} });
+const lockedPack = packShop(44999);
+check(lockedPack.includes('Il manque 1 pts'), 'Pack · le manque de points doit être indiqué');
+check(buttons(lockedPack).some(button=>button.includes('Il manque 1 pts')&&button.includes('disabled')), 'Pack · solde insuffisant non bloqué');
+check(packShop(45000).includes('Débloquer'), 'Pack · achat absent quand le solde suffit');
+const ownedPack = packShop(0,['echoes']);
+check(ownedPack.includes('Pack acquis') && ownedPack.includes('Explorer les Archives'), 'Pack · accès acheté absent');
+check(!ownedPack.includes('Débloquer'), 'Pack · un achat déjà acquis est reproposé');
+
 if (problems.length) {
   console.error(`boutique : ${problems.length} problème(s)`);
   for (const problem of problems) console.error('   ' + problem);

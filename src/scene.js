@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createJungleEnvironment } from './jungle.js';
-import { BIOME_PALETTES, createBiomeEnvironment } from './biomes.js';
+import { BIOME_PALETTES, ECHO_PAST_PALETTE, createBiomeEnvironment } from './biomes.js';
 import { createExplorer } from './explorer.js';
 import { createPixelTextures } from './textures.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -167,6 +167,7 @@ function createPlanarScene(host, callbacks) {
   let pendingVictory = false;
   let pendingTreasure = false;
   let pendingDescent = false;
+  let epochSettlesAt = 0;
   let pendingDefeat = false;
   let captureMotion = null;
   const captureTarget = new THREE.Vector3();
@@ -421,12 +422,17 @@ function createPlanarScene(host, callbacks) {
 
   // Pressure seals, levers and the level's optional treasure belong to a cell.
   const features = [];
+  const memoryGate = createTileHazard({ THREE, tile: { id: 'echo-memory-gate', hazard: 'gate', ports: ['W', 'E'] } });
+  memoryGate.root.name = 'echo-memory-gate'; memoryGate.root.visible = false;
+  memoryGate.root.rotation.y = Math.PI / 2; world.add(memoryGate.root);
   let interactionState = null;
   function syncFeatures() {
     const wanted = [
       ...(state?.seals || []).map(seal => ({ kind: 'seal', index: seal.index, value: seal.pressed })),
       ...(state?.levers || []).map(lever => ({ kind: 'lever', index: lever.index, value: lever.pulled })),
-      ...(state?.relic ? [{ kind: 'relic', index: state.relic.index, value: state.relic.taken }] : []),
+      ...(state?.relic ? [{ kind: 'relic', index: state.relic.index, value: state.relic.taken, phase: state.relic.phase }] : []),
+      ...(state?.echoes?.fragments || []).map(fragment => ({ kind: 'memory', index: fragment.index,
+        value: fragment.taken, phase: fragment.phase, id: fragment.id })),
     ];
     const same = features.length === wanted.length
       && features.every((item, order) => item.kind === wanted[order].kind && item.index === wanted[order].index);
@@ -434,14 +440,16 @@ function createPlanarScene(host, callbacks) {
       features.forEach(item => item.feature.dispose());
       features.length = 0;
       for (const item of wanted) {
-        const feature = createCellFeature({ THREE, kind: item.kind,
-          palette: { gold: biomePalette.gold, gem: biomePalette.connectedGlow } });
+        const feature = createCellFeature({ THREE, kind: item.kind === 'memory' ? 'relic' : item.kind,
+          palette: { gold: biomePalette.gold, gem: item.kind === 'memory' ? item.phase ? 0xf2ba87 : 0x99f0d9 : biomePalette.connectedGlow } });
+        if (item.kind === 'memory') { feature.root.name = `memory-fragment-${item.id}`; feature.root.scale.setScalar(.72); }
         world.add(feature.root);
         features.push({ ...item, value: null, feature });
       }
     }
     features.forEach((item, order) => {
       item.targetValue = wanted[order].value;
+      item.phase = wanted[order].phase;
       item.feature.root.position.copy(cellPosition(item.index));
       // A fitting left over a hole settles to the bottom of the pit.
       item.feature.root.position.y = state?.tiles[item.index] ? .36 : .04;
@@ -451,9 +459,12 @@ function createPlanarScene(host, callbacks) {
 
   function applyFeatureStates() {
     if (!state) return;
-    let changed = interactionState?.gameId !== state.id;
+    let changed = interactionState?.gameId !== state.id || interactionState?.epoch !== state.echoes?.phase;
     for (const item of features) {
       if (item.value === item.targetValue || !hasReachedCell(heroMotion, item.index)) continue;
+      if (item.kind === 'memory' && item.value === false && item.targetValue && interactionState?.gameId === state.id) {
+        explorer.react('curious'); callbacks.onMemory?.();
+      }
       item.value = item.targetValue;
       item.feature.set(item.value);
       changed = true;
@@ -464,9 +475,14 @@ function createPlanarScene(host, callbacks) {
     interactionState = {
       gameId: state.id,
       relicTaken: Boolean(features.find(item => item.kind === 'relic')?.value),
-      gatesOpen: features.every(item => item.kind === 'relic' || item.value),
+      gatesOpen: features.every(item => !['seal', 'lever', 'memory'].includes(item.kind) || item.value),
+      memoryIds: features.filter(item => item.kind === 'memory' && item.value).map(item => item.id),
+      epoch: state.echoes?.phase,
       descentRevealed,
     };
+    memoryGate.root.visible = Boolean(state.echoes);
+    memoryGate.root.position.copy(cellPosition(16));
+    memoryGate.apply({ gatesOpen: interactionState.gatesOpen });
     for (const data of tiles.values()) {
       data.hazard.apply({ gatesOpen: interactionState.gatesOpen, tide: state.tide, heading: data.tile.heading });
       if (data.stairs) data.stairs.visible = descentRevealed;
@@ -635,7 +651,10 @@ function createPlanarScene(host, callbacks) {
     }
     if (currentLevel !== next.id) setBoardProfile(getBoardProfile(next.levelId));
     const nextBiome = Object.hasOwn(BIOME_PALETTES, next.biome) ? next.biome : 'jungle';
-    if (nextBiome !== currentBiome) setBiome(nextBiome);
+    const epochChanged = previous?.id === next.id && previous.echoes?.phase !== next.echoes?.phase;
+    if (nextBiome !== currentBiome || epochChanged || next.echoes && currentLevel !== next.id) setBiome(nextBiome);
+    if (next.echoes) biomeEnvironment.setPhase(next.echoes.phase);
+    if (epochChanged) epochSettlesAt = performance.now() + 650;
     if (next !== previous) pendingSettle = true;
     if (currentLevel !== next.id) {
       for (const [id, data] of tiles) removeTile(id, data);
@@ -657,6 +676,8 @@ function createPlanarScene(host, callbacks) {
     }
     next.tiles.forEach((tile, index) => {
       if (!tile) return;
+      const existing = tiles.get(tile.id);
+      if (next.echoes && existing && existing.tile.ports.join('') !== tile.ports.join('')) removeTile(tile.id, existing);
       const data = tiles.get(tile.id) || buildTile(tile, index);
       if (data.tile.hazard !== tile.hazard || data.tile.flow !== tile.flow) {
         data.hazard.dispose();
@@ -724,7 +745,7 @@ function createPlanarScene(host, callbacks) {
   }
   function setBiome(kind) {
     currentBiome = kind;
-    biomePalette = BIOME_PALETTES[kind];
+    biomePalette = kind === 'echoes' && state?.echoes?.phase ? ECHO_PAST_PALETTE : BIOME_PALETTES[kind];
     const color = biomePalette;
     jungle.setVisible(kind === 'jungle');
     biomeEnvironment.setBiome(kind);
@@ -1050,6 +1071,7 @@ function createPlanarScene(host, callbacks) {
       const capture = state?.caughtBy?.kind === 'crocodile' && state.caughtBy.index === data.index ? captureTime : null;
       data.hazard.update(time, { urgent: data.collapseDistance !== null, dt,
         heroPosition: state?.won || !hero.visible ? null : heroWorld, capture });
+      if (state?.echoes) data.details.update(time);
       if (data.engraving) {
         // Readable from above, near-invisible from the side: the glyph is lit only in top view.
         data.engraving.lift += ((topView ? 1 : 0) - data.engraving.lift) * (1 - Math.exp(-dt * 4));
@@ -1094,7 +1116,11 @@ function createPlanarScene(host, callbacks) {
       guard.marker.scale.setScalar(1 + Math.sin(time * 3.2) * .07);
     }
     if (guardians.length) guardMat.opacity = .34 + Math.sin(time * 3.2) * .16;
-    for (const item of features) item.feature.update(time);
+    for (const item of features) {
+      item.feature.update(time);
+      if (item.phase !== undefined && item.phase !== state?.echoes?.phase) item.feature.root.visible = false;
+    }
+    if (state?.echoes) memoryGate.update(time);
     const turn = Math.atan2(Math.sin(heroHeading - hero.rotation.y), Math.cos(heroHeading - hero.rotation.y));
     hero.rotation.y += turn * (1 - Math.exp(-frameDelta * 16));
     if (capturePose) {
@@ -1155,7 +1181,7 @@ function createPlanarScene(host, callbacks) {
       bit.mesh.scale.setScalar(1 - bit.age * 2);
       bit.mesh.rotation.x += dt * 3;
     });
-    if (pendingSettle && !heroMotion && (!captureMotion || captureMotion.complete) && [...tiles.values()].every(tile =>
+    if (pendingSettle && !heroMotion && now >= epochSettlesAt && (!captureMotion || captureMotion.complete) && [...tiles.values()].every(tile =>
       tile.collapseDistance === null && tile.fallStartedAt === null &&
       Math.abs(tile.group.position.x - tile.target.x) + Math.abs(tile.group.position.z - tile.target.z) < 0.004)) {
       pendingSettle = false;
@@ -1261,6 +1287,7 @@ function createPlanarScene(host, callbacks) {
       renderer.domElement.removeEventListener('webglcontextlost', onContextLost);
       guardians.forEach(guard => { guard.actor.dispose(); guard.marker.removeFromParent(); });
       features.forEach(item => item.feature.dispose());
+      memoryGate.dispose();
       for (const [id, data] of tiles) removeTile(id, data);
       geometries.forEach(g => g.dispose());
       materials.forEach(m => m.dispose());

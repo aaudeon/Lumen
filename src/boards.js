@@ -1,6 +1,11 @@
 import { buildBorealBoard, buildBorealTile } from './boreal-board.js';
 /** Physical proportions and architectural identities; puzzle connectivity remains orthogonal. */
 const profiles = {
+  vestibule: ['echoes','Le vestibule des heures','archives',1.06,1,0],
+  palimpseste: ['echoes','La galerie palimpseste','archives',1.13,.96,1],
+  revers: ['echoes','Le pont des revers','archives',.98,1.08,2],
+  resonance: ['echoes','La chambre de résonance','archives',1.12,1.04,3],
+  anamnesis: ['echoes','Le dernier souvenir','archives',1.06,1.08,4],
   clairdelune: ['space','Le premier clair de Lune','surface',1,1,0],
   tranquillite: ['space','Mer de la Tranquillité','surface',1,1,1],
   terminateur: ['space','Ligne du terminateur','surface',1,1,2],
@@ -94,7 +99,16 @@ export function createBoardStructure({THREE,world,textures}) {
       const accent=mat(biome==='jungle'?0x688446:biome==='atlantis'?0x64cdd4:0xdc8245,
         {emissive:biome==='volcano'?0x8a250b:0x10352c,emissiveIntensity:.18});
 
-      if(biome==='boreal') {
+      if(biome==='echoes') {
+        const foundation=mat(0x50695e),coping=mat(0xc7cdb8),copper=mat(0x799e8b,{metalness:.65});
+        mesh(box,foundation,0,-.49,0,5.65,.75,5.65);
+        mesh(box,coping,0,-.1,0,5.9,.16,5.9);
+        for(const side of [-1,1]) {
+          mesh(box,copper,side*2.85,-.12,0,.07,.1,5.74);
+          mesh(box,copper,0,-.12,side*2.85,5.74,.1,.07);
+        }
+        for(let index=0;index<6;index++) mesh(box,coping,-2.4+index*.96,-.75,-2.83,.47,.12,.18);
+      } else if(biome==='boreal') {
         buildBorealBoard(kit,profile,maps);
       } else if(biome==='jungle') {
         // Offset retaining walls and hanging roots replace the perfectly square plinth.
@@ -229,6 +243,20 @@ export function createTileScenery({THREE,tile,profile}) {
   const solid=tile.ports.length===0;
   const {biome}=profile;
   if(tile.hazard) return kit;
+  if(biome==='echoes') {
+    const copper=mat(0x7fa79a,{metalness:.55}),glyph=mat(0xd7c48b,{emissive:0x99834b,emissiveIntensity:.25});
+    if(tile.chronolith) {
+      root.name='chronolith';
+      mesh(column,copper,-.37,.17,-.37,.085,.22,.085);
+      const orbit=mesh(geo(new THREE.TorusGeometry(.14,.017,6,28)),glyph,-.37,.35,-.37);
+      kit.animations.push(time=>{orbit.rotation.y=time*.7;orbit.rotation.z=time*.35;});
+      mesh(geo(new THREE.OctahedronGeometry(.065)),glyph,-.37,.35,-.37);
+    } else {
+      mesh(box,copper,-.47,.043,-.47,.1,.025,.1).rotation.y=Math.PI/4;
+      mesh(box,copper,.47,.043,.47,.1,.025,.1).rotation.y=Math.PI/4;
+    }
+    return kit;
+  }
   if(biome==='boreal') {buildBorealTile(kit,solid,v);return kit;}
   if(biome==='jungle') {
     const leaf=mat(v===0?0x809943:0x4f773d),stone=mat(0x8a9d73),earth=mat(0x5e6138);
