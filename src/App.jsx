@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Map as MapIcon, RotateCcw, ShieldAlert, Box, Layers3, ArrowUp, ArrowDown, Moon, Focus } from 'lucide-react';
 import { createGameScene } from './scene.js';
 import { GameAudio } from './audio.js';
 import HomeScreen from './HomeScreen.jsx';
 import { BIOMES, frontierLevel, getBiome, isOpen as passageOpen } from './campaign.js';
 import { DEV_MODE, exitDevMode } from './dev-mode.js';
-import { directionalDestination } from './motion.js';
+import { directionalDestination, findWalkPreview, isCrocodileCell } from './motion.js';
 import { getBoardProfile } from './boards.js';
+import { boardShape, adjacentCell, cellLabel } from './volume.js';
+import { LUNAR_FACE_NAMES, lunarKeyDestination, lunarLabel } from './lunar.js';
 import { LABELS, scoreRun, walletTotal } from './score.js';
 import { EMPTY_WARDROBE, DEFAULT_LOOK, ITEMS, equip, grant, purchase, spendable } from './cosmetics.js';
 import { accountRequest, ProgressProfile, SESSION_EXPIRED_EVENT } from './account.js';
@@ -50,14 +53,14 @@ async function gameApi(path, body, userId) {
   return data;
 }
 
-function Dialog({ children, onClose, title }) {
+function Dialog({ children, onClose, title, dismissible = true, className = '' }) {
   const ref = useRef(null);
   useEffect(() => {
     const previous = document.activeElement;
     const dialog = ref.current;
     dialog?.querySelector('button')?.focus();
     function handle(event) {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape' && dismissible) onClose();
       if (event.key === 'Tab') {
         const buttons = [...dialog.querySelectorAll('button:not(:disabled), a[href], [tabindex="0"]')];
         const first = buttons[0]; const last = buttons.at(-1);
@@ -67,10 +70,10 @@ function Dialog({ children, onClose, title }) {
     }
     document.addEventListener('keydown', handle);
     return () => { document.removeEventListener('keydown', handle); previous?.focus(); };
-  }, [onClose]);
-  return <div className="modal-scrim" onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="dialog" role="dialog" aria-modal="true" aria-label={title} ref={ref}>
-      <button className="icon-button close-dialog" onClick={onClose} aria-label="Fermer"><Icon name="close" /></button>
+  }, [onClose, dismissible]);
+  return <div className="modal-scrim" onClick={event => { if (dismissible && event.target === event.currentTarget) onClose(); }}>
+    <section className={`dialog ${className}`} role="dialog" aria-modal="true" aria-label={title} ref={ref}>
+      {dismissible && <button className="icon-button close-dialog" onClick={onClose} aria-label="Fermer"><Icon name="close" /></button>}
       {children}
     </section>
   </div>;
@@ -135,6 +138,7 @@ function GameApp({ profile, onAccountChange }) {
   const [screen, setScreen] = useState('home');
   const [levels, setLevels] = useState([]);
   const [game, setGame] = useState(null);
+  const [interactions, setInteractions] = useState(null);
   const [mode, setMode] = useState('slide');
   const [busy, setBusy] = useState(true);
   const [notice, setNotice] = useState('Les ruines s’éveillent…');
@@ -142,6 +146,8 @@ function GameApp({ profile, onAccountChange }) {
   const [hovered, setHovered] = useState(-2);
   const [selected, setSelected] = useState(-2);
   const [view, setView] = useState('iso');
+  const [volumeView, setVolumeView] = useState({ expanded: false, layer: -1 });
+  const [surfaceView, setSurfaceView] = useState('free');
   const [modal, setModal] = useState(null);
   const [sound, setSound] = useState(false);
   const [progress, setProgress] = useState(() => readSaved('lumen-progress', {}));
@@ -150,6 +156,7 @@ function GameApp({ profile, onAccountChange }) {
   const [elapsed, setElapsed] = useState(0);
   const [winDismissed, setWinDismissed] = useState(false);
   const [animating, setAnimating] = useState(false);
+  const [defeatReady, setDefeatReady] = useState(false);
   const [slideChoice, setSlideChoice] = useState(-1);
   const [arrival, setArrival] = useState(null);
   const [runScore, setRunScore] = useState(null);
@@ -173,6 +180,7 @@ function GameApp({ profile, onAccountChange }) {
   const live = useRef({});
   const busyRef = useRef(true);
   const requestInFlight = useRef(true);
+  const pendingNotice = useRef(null);
   const alive = useRef(true);
   const pauseStarted = useRef(Date.now());
   const arrivedWorlds = useRef(new Set());
@@ -187,16 +195,22 @@ function GameApp({ profile, onAccountChange }) {
   const hostLevel = room ? levels.find(l => l.id === room.host) : null;
   const biome = getBiome(level?.biome);
   const boardProfile = getBoardProfile(game?.levelId);
+  const spatial = game?.boardKind === 'volume';
+  const lunar = game?.boardKind === 'surface';
+  const cubic = spatial || lunar;
+  const dimensions = boardShape(game);
   const worldLevels = levels.filter(item => item.biome === biome.id);
   const chapter = Math.max(0, levels.findIndex(l => l.id === (room ? room.host : game?.levelId)));
   const closeModal = useCallback(() => setModal(null), []);
 
   function setWorking(value) { busyRef.current = value; setBusy(value); }
   function persist(next, recordVictory = true) {
+    if (!next.lost || live.current.game?.id !== next.id || !live.current.game?.lost) setDefeatReady(false);
+    if (next.lost && !scene.current) setDefeatReady(true);
     setGame(next);
     save('lumen-session', next.id);
     save('lumen-level', next.levelId);
-    if (next.won && recordVictory) {
+    if (next.won && !next.lost && recordVictory) {
       const finished = passage(next.levelId);
       const seconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
       const run = finished && scoreRun({ par: finished.par, stepPar: finished.stepPar, moves: next.moves,
@@ -307,7 +321,7 @@ function GameApp({ profile, onAccountChange }) {
   async function startExpedition(levelId) {
     if (busyRef.current) return;
     if (!isOpen(levelsRef.current, progressRef.current, levelId, secretsRef.current)) return;
-    if (game?.levelId !== levelId || game?.won) {
+    if (game?.levelId !== levelId || game?.won || game?.lost) {
       if (!await loadLevel(levelId)) return;
     } else if (pauseStarted.current !== null) {
       setStartedAt(previous => previous + Date.now() - pauseStarted.current);
@@ -318,6 +332,7 @@ function GameApp({ profile, onAccountChange }) {
   }
   async function act(type, index, to) {
     if (busyRef.current || !live.current.game) return;
+    if (live.current.game.lost && type !== 'reset') return;
     if (live.current.game.won && !['undo', 'reset'].includes(type)) return;
     setWorking(true);
     requestInFlight.current = true;
@@ -327,9 +342,12 @@ function GameApp({ profile, onAccountChange }) {
       const next = await api('/api/action', { gameId: live.current.game.id, type, ...(index === undefined || index === null ? {} : { index }), ...(to === undefined ? {} : { to }) });
       if (!alive.current) return;
       requestInFlight.current = false;
-      setAnimating(Boolean(next.walkPath?.length));
+      const walking = Boolean(next.walkPath?.length && scene.current);
+      const message = next.hint?.text || next.message || (type === 'slide' ? 'La pierre glisse. Un nouveau chemin se dessine.' : 'À vous de tracer la suite.');
+      setAnimating(walking);
+      pendingNotice.current = walking ? message : null;
       persist(next);
-      setNotice(next.hint?.text || next.message || (type === 'slide' ? 'La pierre glisse. Un nouveau chemin se dessine.' : 'À vous de tracer la suite.'));
+      setNotice(walking ? 'Lumen suit la lumière.' : message);
       if (!next.walkPath?.length) audio.current?.play(type === 'hint' ? 'hint' : 'slide');
       if (type === 'reset') { setStartedAt(Date.now()); setElapsed(0); setWinDismissed(false); setRunScore(null); }
       if (!next.won) setWinDismissed(false);
@@ -342,8 +360,17 @@ function GameApp({ profile, onAccountChange }) {
   }
   function handleTile(index) {
     const current = live.current;
-    if (busyRef.current || !current.game) return;
-    if (index >= 0 && index < 16 && !current.game.tiles[index]) {
+    if (busyRef.current || !current.game || current.game.lost) return;
+    const shape = boardShape(current.game);
+    if (current.game.boardKind === 'surface') {
+      if (current.mode === 'walk' || index === -1 || index === shape.finish) {
+        if (index !== current.game.hero) act('walk', index);
+      } else if (index === current.game.heroCube) {
+        setNotice('Ce cube porte Lumen : faites-le avancer pour le libérer.');
+      } else act('slide', index);
+      return;
+    }
+    if (index >= 0 && index < shape.count && !current.game.tiles[index]) {
       if (current.slideChoice >= 0 && current.game.slideOptions?.some(option => option.index === current.slideChoice && option.to === index)) {
         act('slide', current.slideChoice, index);
       } else setNotice('Choisissez d’abord une dalle voisine, puis le vide où la glisser.');
@@ -353,7 +380,7 @@ function GameApp({ profile, onAccountChange }) {
       setNotice('L’aventurier occupe cette dalle : faites-le avancer pour la libérer.');
       audio.current?.play('error'); return;
     }
-    if (index === 16 || index === -1) act('walk', index);
+    if (index === shape.finish || index === -1) act('walk', index);
     else if (current.mode === 'slide') {
       const choices = current.game.slideOptions?.filter(option => option.index === index) || [];
       if (choices.length > 1) {
@@ -363,7 +390,9 @@ function GameApp({ profile, onAccountChange }) {
     } else act('walk', index);
   }
   function switchMode(next) {
+    if (busyRef.current || live.current.game?.lost) return;
     setMode(next);
+    setHovered(-2);
     setSelected(-2);
     setSlideChoice(-1);
     setNotice(next === 'slide' ? 'Cliquez sur une dalle éclairée, voisine d’un vide.' : 'Choisissez une dalle stable : Lumen suit le trajet sûr et traverse les fissures sans s’arrêter.');
@@ -422,10 +451,19 @@ function GameApp({ profile, onAccountChange }) {
         onFootfall: () => audio.current?.play('walk'),
         onCollapse: () => audio.current?.play('collapse'),
         onVictory: () => audio.current?.play('win'),
+        onDefeat: () => { if (alive.current) { setDefeatReady(true); audio.current?.play('error'); } },
         onDescent: () => audio.current?.play('hint'),
-        onOrbit: () => setView('free'),
+        onInteractions: setInteractions,
+        onOrbit: () => { setView('free'); setSurfaceView('free'); },
         onReady: () => setReady(true),
-        onSettled: () => { if (alive.current && !requestInFlight.current) { setWorking(false); setAnimating(false); } },
+        onSettled: () => {
+          if (!alive.current || requestInFlight.current) return;
+          if (pendingNotice.current !== null) {
+            setNotice(pendingNotice.current);
+            pendingNotice.current = null;
+          }
+          setWorking(false); setAnimating(false);
+        },
         onError: setError,
       });
     } catch {
@@ -436,6 +474,8 @@ function GameApp({ profile, onAccountChange }) {
   useEffect(() => { scene.current?.update(game, mode, selected); }, [game, mode, selected]);
   useEffect(() => { scene.current?.setActive(screen === 'game'); }, [screen]);
   useEffect(() => { scene.current?.setView(view); }, [view]);
+  useEffect(() => { scene.current?.setVolumeView(volumeView); }, [volumeView]);
+  useEffect(() => { scene.current?.setSurfaceView(surfaceView); }, [surfaceView]);
   useEffect(() => { scene.current?.setExplorerStyle(wardrobe.equipped); }, [wardrobe]);
   useEffect(() => {
     const probe = frameProbe.current;
@@ -444,7 +484,7 @@ function GameApp({ profile, onAccountChange }) {
       const parent = probe.offsetParent;
       if (!parent || !scene.current) return;
       scene.current.setSafeArea({
-        top: probe.offsetTop,
+        top: probe.offsetTop + (['volume', 'surface'].includes(game?.boardKind) ? 86 : 0),
         left: probe.offsetLeft,
         right: parent.clientWidth - probe.offsetLeft - probe.offsetWidth,
         bottom: parent.clientHeight - probe.offsetTop - probe.offsetHeight,
@@ -454,25 +494,26 @@ function GameApp({ profile, onAccountChange }) {
     observer.observe(probe);
     sync();
     return () => observer.disconnect();
-  }, [ready, screen]);
+  }, [ready, screen, game?.boardKind]);
   useEffect(() => {
     if (!arrival) return;
     const timer = setTimeout(() => setArrival(null), 5200);
     return () => clearTimeout(timer);
   }, [arrival]);
   useEffect(() => {
-    if (game?.won || screen !== 'game') return;
+    if (game?.won || game?.lost || screen !== 'game') return;
     const timer = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
     return () => clearInterval(timer);
-  }, [startedAt, game?.won, screen]);
+  }, [startedAt, game?.won, game?.lost, screen]);
   useEffect(() => {
     function keydown(event) {
       const current = live.current;
       if (current.screen !== 'game' || current.modal || current.arrival || event.ctrlKey || event.metaKey || event.altKey || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
       if (event.target.closest('button') && ['Enter', ' '].includes(event.key)) return;
       const key = event.key.toLowerCase();
-      if ([' ', 'enter', 'z', 'r', 'h', 'm', 't', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) event.preventDefault();
+      if ([' ', 'enter', 'z', 'r', 'h', 'm', 't', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown'].includes(key)) event.preventDefault();
       if (event.repeat || busyRef.current) return;
+      if (current.game?.lost && !['r', 'm'].includes(key)) return;
       if (key === ' ') current.toggleMode();
       else if (key === 'z') current.act('undo');
       else if (key === 'r') current.act('reset');
@@ -482,49 +523,72 @@ function GameApp({ profile, onAccountChange }) {
       else if (key === 'enter') {
         if (current.selected >= 0 && current.mode === 'slide') current.handleTile(current.selected);
         else current.act('walk');
-      } else if (key.startsWith('arrow')) {
+      } else if (key.startsWith('arrow') || key === 'pageup' || key === 'pagedown') {
         if (!current.game) return;
-        const delta = { arrowup: -4, arrowdown: 4, arrowleft: -1, arrowright: 1 }[key];
+        const shape = boardShape(current.game);
+        if (current.game.boardKind === 'surface' && current.mode === 'walk') {
+          const destination = current.game.hero === -1 ? (key === 'arrowright' ? current.game.entry.index : null)
+            : lunarKeyDestination(current.game.hero, key);
+          if (destination !== null && current.game.walkRoutes?.[String(destination)]?.[1] === destination) current.act('walk', destination);
+          else if (key.startsWith('arrow')) setNotice('Les pistes ne se raccordent pas de ce côté de la face.');
+          return;
+        }
+        const [side, opposite] = { arrowup: ['N', 'S'], arrowdown: ['S', 'N'], arrowleft: ['W', 'E'], arrowright: ['E', 'W'], pageup: ['U', 'D'], pagedown: ['D', 'U'] }[key] || [];
+        if (!side) return;
         const index = current.mode === 'walk' ? current.game.hero : current.selected >= 0 ? current.selected : 0;
         if (current.mode === 'walk' && index === -1) { if (key === 'arrowright') { const target = directionalDestination(current.game, 0); if (target !== null) current.act('walk', target); } return; }
         if (current.mode === 'walk' && index === 0 && key === 'arrowleft') { current.act('walk', -1); return; }
-        if (current.mode === 'walk' && index === 15 && key === 'arrowright') { current.act('walk', 16); return; }
-        const next = index + delta;
-        if (next < 0 || next > 15 || (Math.abs(delta) === 1 && Math.floor(next / 4) !== Math.floor(index / 4))) return;
+        if (current.mode === 'walk' && index === shape.count - 1 && key === 'arrowright') { current.act('walk', shape.finish); return; }
+        const next = adjacentCell(current.game, index, side);
+        if (next === null) return;
         if (current.mode === 'walk') {
-          const [side, opposite] = { arrowup: ['N', 'S'], arrowdown: ['S', 'N'], arrowleft: ['W', 'E'], arrowright: ['E', 'W'] }[key];
           const target = directionalDestination(current.game, next);
           if (target !== null && current.game.tiles[index]?.ports.includes(side) && current.game.tiles[next]?.ports.includes(opposite)) current.act('walk', target);
           else setNotice('Aucun trajet sûr dans cette direction. Vérifiez les dangers et le sens des courants.');
         }
-        else { setSelected(next); setSlideChoice(-1); setNotice(`Dalle, ligne ${Math.floor(next / 4) + 1}, colonne ${next % 4 + 1}. Entrée pour la déplacer.`); }
+        else { setSelected(next); setSlideChoice(-1); setNotice(cellLabel(current.game, next)); }
       }
     }
     window.addEventListener('keydown', keydown);
     return () => window.removeEventListener('keydown', keydown);
   }, []);
 
-  const canWalk = game && !game.won && (game.hero === -1 ? game.canEnter : game.reachable.some(i => i !== game.hero) || game.canExit);
+  const canWalk = game && !game.won && !game.lost && (game.hero === -1 ? game.canEnter : game.reachable.some(i => i !== game.hero) || game.canExit);
+  const verticalDestination = direction => {
+    if (!spatial || !game || game.won) return null;
+    const neighbor = adjacentCell(game, game.hero, direction);
+    return neighbor === null ? null : directionalDestination(game, neighbor);
+  };
+  function walkVertically(direction) {
+    const destination = verticalDestination(direction);
+    if (destination === null || busyRef.current) return;
+    setMode('walk'); act('walk', destination);
+  }
   const minutes = String(Math.floor(elapsed / 60)).padStart(2, '0');
   const seconds = String(elapsed % 60).padStart(2, '0');
   const objective = game?.levelId === 'relais' ? 'Avancez, puis réutilisez les dalles.' : 'Reliez l’entrée au portail de lumière.';
   const mechanic = level?.mechanic;
   const emptyCount = game?.emptyCells?.length || 1;
+  const displayedInteractions = interactions && interactions.gameId === game?.id ? interactions : null;
+  const relicTaken = displayedInteractions?.relicTaken ?? Boolean(game?.relic?.taken);
+  const gatesOpen = displayedInteractions?.gatesOpen ?? game?.gatesOpen;
   const slideDestinations = game?.slideOptions?.filter(option => option.index === slideChoice) || [];
   const hoveredHazard = game?.tiles[hovered]?.hazard;
   const compass = { N: 'le nord', E: 'l’est', S: 'le sud', W: 'l’ouest' };
   const guardedCell = game?.guardians?.some(guard => guard.index === hovered);
   const nextGuardCell = game?.guardians?.some(guard => guard.next === hovered && guard.index !== hovered);
-  const hazardText = guardedCell ? 'Crocodile en maraude · sa pierre est bloquée jusqu’à son départ'
-    : hoveredHazard === 'crocodile' ? 'Crocodile · passage interdit, dalle déplaçable'
+  const dangerousRoute = mode === 'walk' && findWalkPreview(game, hovered).some(index => isCrocodileCell(game, index));
+  const hazardText = dangerousRoute ? 'Trajet dangereux · un crocodile attend sur ce chemin'
+    : guardedCell ? 'Crocodile en maraude · capture au contact'
+    : hoveredHazard === 'crocodile' ? 'Crocodile · case accessible, capture au contact'
     : hoveredHazard === 'current' ? `Courant · sortie vers ${compass[game.tiles[hovered].heading || game.tiles[hovered].flow]}`
     : hoveredHazard === 'ice' ? 'Glace · tout droit, sans tourner ni s’arrêter ; visez une dalle stable'
     : hoveredHazard === 'fragile' ? 'Dalle fragile · traversez jusqu’à une dalle stable'
     : hoveredHazard === 'brittle' ? 'Dalle fissurée · encore solide, elle cédera après un effondrement voisin'
-    : hoveredHazard === 'gate' ? (game.gatesOpen ? 'Porte ouverte · tant que le sceau reste actif' : 'Porte close · activez son sceau pour passer')
+    : hoveredHazard === 'gate' ? (gatesOpen ? 'Porte ouverte · tant que le sceau reste actif' : 'Porte close · activez son sceau pour passer')
     : hoveredHazard === 'weight' ? 'Pierre de lest · seule elle peut peser sur un sceau'
     : hoveredHazard === 'submerged' ? (game.tide === 'basse' ? 'Dalle émergée · praticable tant que la marée est basse' : 'Dalle immergée · faites descendre la marée')
-    : game?.relic && game.relic.index === hovered && !game.relic.taken ? `Trésor · ${game.relic.name}, un détour facultatif`
+    : game?.relic && game.relic.index === hovered && !relicTaken ? `Trésor · ${game.relic.name}, un détour facultatif`
     : nextGuardCell ? 'Le crocodile viendra ici au prochain déplacement de dalle' : '';
   const wallet = walletTotal(progress);
   const credits = spendable(progress, wardrobe);
@@ -549,12 +613,16 @@ function GameApp({ profile, onAccountChange }) {
   const hostRoom = level?.secret ? secrets.find(item => item.host === level.id) : null;
   const nextJourney = room ? 'Remonter à la lumière' : nextLevel ? (nextLevel.biome === biome.id ? 'Poursuivre le voyage' : getBiome(nextLevel.biome).arrival) : 'Retrouver la carte';
   const rewardName = room ? ITEMS[room.reward]?.name || room.reward : '';
-  const hoverText = hazardText || (hovered === game?.hero ? 'Dalle occupée · déplacement verrouillé' : hovered === 16 ? 'Le portail de lumière · sortie' : hovered >= 0 ? `Ligne ${Math.floor(hovered / 4) + 1} · colonne ${hovered % 4 + 1}${!game?.tiles[hovered] ? ' · vide disponible' : game?.slidable.includes(hovered) ? ' · peut glisser' : game?.reachable.includes(hovered) ? ' · chemin accessible' : ''}` : 'Glissez pour tourner · molette ou pincement pour zoomer · clic molette pour changer de mode');
+  const lunarHover = lunar ? (hovered === -1 || hovered === dimensions.finish || mode === 'walk' && hovered >= 0
+    ? `${lunarLabel(hovered)}${hovered === game.hero ? ' · Lumen' : game.reachable.includes(hovered) ? ' · chemin relié' : ''}`
+    : hovered >= 0 ? `${cellLabel(game, hovered)}${hovered === game.heroCube ? ' · cube occupé' : game.slidable.includes(hovered) ? ' · peut glisser' : ''}`
+      : 'LUNE · SIX FACES EXTÉRIEURES') : '';
+  const hoverText = lunarHover || hazardText || (hovered === game?.hero ? `${spatial ? 'Cube' : 'Dalle'} occupé · déplacement verrouillé` : hovered === dimensions.finish ? 'Le portail de lumière · sortie' : hovered >= 0 ? `${cellLabel(game, hovered)}${!game?.tiles[hovered] ? ' · vide disponible' : game?.slidable.includes(hovered) ? ' · peut glisser' : game?.reachable.includes(hovered) ? ' · chemin accessible' : ''}` : spatial ? 'STATION ORBITALE · 26 CUBES · 1 VIDE' : 'Glissez pour tourner · molette ou pincement pour zoomer · clic molette pour changer de mode');
 
   return <>
     {screen === 'home' && <HomeScreen levels={levels} secrets={secrets} progress={progress} currentGame={game} busy={busy} error={error} onStart={startExpedition} onSound={toggleSound} sound={sound} wardrobe={wardrobe} credits={credits} onBuy={buyCosmetic} onEquip={equipCosmetic} onReset={resetAccount} accountControl={<AccountButton profile={profile} status={accountStatus} onClick={() => { if (!busyRef.current) setAccountOpen(true); }}/>} connected={Boolean(profile.user)}/>}
     {accountOpen && <AccountPanel profile={profile} status={accountStatus} onChange={onAccountChange} onClose={() => { setAccountOpen(false); setAccountError(''); }} initialError={accountError}/>}
-    <main className="game-shell" data-biome={biome.id} hidden={screen !== 'game'}>
+    <main className={`game-shell ${spatial ? 'is-volume' : lunar ? 'is-surface' : ''}`} data-biome={biome.id} data-region={game?.region} hidden={screen !== 'game'}>
     <div className="grain" aria-hidden="true" />
     <header className="topbar">
       <a className="brand" href="#" onClick={e => { e.preventDefault(); returnToMap(); }} aria-label="Lumen, revenir à la carte">
@@ -582,7 +650,7 @@ function GameApp({ profile, onAccountChange }) {
     </header>
 
     <aside className="story-panel">
-      <p className="eyebrow"><span/> {room ? `PASSAGE SECRET · SOUS ${(hostLevel?.name || '').toUpperCase()}` : `${biome.name.toUpperCase()} · ${level?.biomeLevel || 1} / ${worldLevels.length || 5}`}</p>
+      <p className="eyebrow"><span/> {room ? `PASSAGE SECRET · SOUS ${(hostLevel?.name || '').toUpperCase()}` : `${lunar ? 'ESPACE · LUNE' : biome.name.toUpperCase()} · ${level?.biomeLevel || 1} / ${worldLevels.length || 5}`}</p>
       <h1>{level?.name || 'Le premier\npassage'}</h1>
       <div className="title-ornament"><i/><Icon name="diamond" size={13}/><i/></div>
       <p className="story">{mechanic?.text || level?.subtitle || biome.description}</p>
@@ -592,7 +660,7 @@ function GameApp({ profile, onAccountChange }) {
         <div><strong>{String(game?.steps || 0).padStart(2, '0')}</strong><span>PAS</span></div>
         <div className="time-counter"><strong>{minutes}<b>:</b>{seconds}</strong><span>TEMPS</span></div>
       </div>
-      <div className="level-detail"><span>{level?.difficulty || 'Initiation'}</span><i/><span>Plateau 4 × 4</span></div>
+      <div className="level-detail"><span>{level?.difficulty || 'Initiation'}</span><i/><span>{lunar ? 'Surface · six faces' : spatial ? 'Volume 3 × 3 × 3' : 'Plateau 4 × 4'}</span></div>
       {progress[game?.levelId]?.completed && <p className="best-score"><Icon name="check" size={13}/> Déjà exploré · record {progress[game.levelId].moves} déplacements</p>}
       <button className="text-button chapter-picker" onClick={() => setModal('levels')}>Les chapitres <Icon name="arrow" size={15}/></button>
     </aside>
@@ -608,30 +676,62 @@ function GameApp({ profile, onAccountChange }) {
     <div className={`world-hud ${ready ? 'is-ready' : ''}`}>
       <div className="frame-probe" ref={frameProbe} aria-hidden="true" />
       <div className="world-topline"><span><i/> {boardProfile.name.toUpperCase()}</span><div className="camera-tools"><button className="camera-reset" onClick={() => { setView('iso'); scene.current?.setView('iso'); }} title="Recentrer la caméra" aria-label="Recentrer la caméra"><Icon name="reset" size={15}/></button><button className="view-toggle" onClick={() => setView(view === 'top' ? 'iso' : 'top')} aria-label={view === 'top' ? 'Vue en perspective' : 'Vue du dessus'}><Icon name="eye" size={16}/>{view === 'top' ? 'Vue en perspective' : 'Vue du dessus'}</button></div></div>
-      <div className="world-caption"><span className="coordinate">360°</span><p>{hoverText}</p><span className="coordinate">4 × 4</span></div>
-      <div className="board-legend"><span><i className="mint"/> Trajet sûr</span><span><i className="gold"/> Aventurier</span><span className={emptyCount > 1 ? 'extra-empty' : ''}><i className="empty"/> {emptyCount > 1 ? `${emptyCount} vides disponibles` : 'Case vide'}</span>{game?.canTide && <span className="tide-chip"><Icon name="tide" size={14}/> Marée {game.tide}</span>}{game?.relic && <span className={`relic-chip ${game.relic.taken ? 'found' : ''}`}><Icon name="relic" size={14}/> {game.relic.taken ? game.relic.name : 'Trésor à trouver'}</span>}</div>
+      {spatial && <div className="volume-controls">
+        <div className="volume-modes" role="group" aria-label="Disposition du volume">
+          <button type="button" disabled={busy} aria-pressed={!volumeView.expanded} title="Vue assemblée" onClick={() => setVolumeView(previous => ({ ...previous, expanded: false }))}><Box size={16}/><span>Volume</span></button>
+          <button type="button" disabled={busy} aria-pressed={volumeView.expanded} title="Vue éclatée" onClick={() => setVolumeView(previous => ({ ...previous, expanded: true }))}><Layers3 size={16}/><span>Éclaté</span></button>
+        </div>
+        <select aria-label="Étage visible" disabled={busy} value={volumeView.layer} onChange={event => setVolumeView(previous => ({ ...previous, layer: Number(event.target.value) }))}>
+          <option value={-1}>Tous les étages</option><option value={2}>Étage 3 · haut</option><option value={1}>Étage 2 · cœur</option><option value={0}>Étage 1 · bas</option>
+        </select>
+        <div className="volume-vertical" role="group" aria-label="Déplacement vertical">
+          <button type="button" disabled={busy || verticalDestination('U') === null} aria-label="Monter d’un étage" title="Monter d’un étage" onClick={() => walkVertically('U')}><ArrowUp size={17}/></button>
+          <button type="button" disabled={busy || verticalDestination('D') === null} aria-label="Descendre d’un étage" title="Descendre d’un étage" onClick={() => walkVertically('D')}><ArrowDown size={17}/></button>
+        </div>
+      </div>}
+      {lunar && <div className="volume-controls lunar-controls">
+        <span className="lunar-location"><Moon size={16}/>Lune</span>
+        <select aria-label="Face observée" disabled={busy} value={surfaceView} onChange={event => { setSurfaceView(event.target.value); setView('free'); }}>
+          <option value="free">Orbite libre</option>
+          {Object.entries(LUNAR_FACE_NAMES).map(([face, name]) => <option key={face} value={face}>{name}</option>)}
+        </select>
+        <button type="button" disabled={busy} title="Voir Lumen" aria-label="Voir Lumen" onClick={() => { setSurfaceView(game.heroFace); setView('free'); scene.current?.setSurfaceView('hero'); }}><Focus size={18}/></button>
+      </div>}
+      <div className="world-caption"><span className="coordinate">360°</span><p>{hoverText}</p><span className="coordinate">{cubic ? '3 × 3 × 3' : '4 × 4'}</span></div>
+      <div className="board-legend"><span><i className={dangerousRoute ? 'danger' : 'mint'}/> {dangerousRoute ? 'Trajet dangereux' : 'Trajet sûr'}</span><span><i className="gold"/> Aventurier</span><span className={emptyCount > 1 ? 'extra-empty' : ''}><i className="empty"/> {emptyCount > 1 ? `${emptyCount} vides disponibles` : 'Case vide'}</span>{game?.canTide && <span className="tide-chip"><Icon name="tide" size={14}/> Marée {game.tide}</span>}{game?.relic && <span className={`relic-chip ${relicTaken ? 'found' : ''}`}><Icon name="relic" size={14}/> {relicTaken ? game.relic.name : 'Trésor à trouver'}</span>}</div>
     </div>
 
     <section className="control-dock" aria-label="Commandes de jeu">
       <div className="mode-controls">
         <span className="tiny-label">À VOUS DE JOUER</span>
         <div className="mode-switch" role="group" aria-label="Mode d’interaction">
-          <button className={mode === 'slide' ? 'selected' : ''} onClick={() => switchMode('slide')} aria-pressed={mode === 'slide'}><Icon name="grid" size={18}/> Déplacer les dalles</button>
-          <button className={mode === 'walk' ? 'selected' : ''} onClick={() => switchMode('walk')} aria-pressed={mode === 'walk'}><Icon name="foot" size={19}/> Explorer</button>
+          <button className={mode === 'slide' ? 'selected' : ''} disabled={busy || game?.lost} onClick={() => switchMode('slide')} aria-pressed={mode === 'slide'}>{cubic ? <Box size={18}/> : <Icon name="grid" size={18}/>} Déplacer les {cubic ? 'cubes' : 'dalles'}</button>
+          <button className={mode === 'walk' ? 'selected' : ''} disabled={busy || game?.lost} onClick={() => switchMode('walk')} aria-pressed={mode === 'walk'}><Icon name="foot" size={19}/> Explorer</button>
         </div>
       </div>
       <div className="action-controls">
-        <button className="tool-button" disabled={busy || !game?.historyLength} onClick={() => act('undo')} title="Annuler (Z)"><Icon name="undo" size={19}/><span>Annuler</span></button>
+        <button className="tool-button" disabled={busy || game?.lost || !game?.historyLength} onClick={() => act('undo')} title="Annuler (Z)"><Icon name="undo" size={19}/><span>Annuler</span></button>
         <button className="tool-button" disabled={busy || !game} onClick={() => act('reset')} title="Recommencer (R)"><Icon name="reset" size={19}/><span>Recommencer</span></button>
-        <button className={`tool-button ${game?.hint ? 'hint-active' : ''}`} disabled={busy || !game || game.won} onClick={() => act('hint')} title="Un indice (H)"><Icon name="bulb" size={19}/><span>Un indice</span></button>
+        <button className={`tool-button ${game?.hint ? 'hint-active' : ''}`} disabled={busy || !game || game.won || game.lost} onClick={() => act('hint')} title="Un indice (H)"><Icon name="bulb" size={19}/><span>Un indice</span></button>
         {game?.canTide && <button className={`tool-button tide-button ${game.tide === 'basse' ? 'is-low' : ''}`} disabled={busy} onClick={() => act('tide')} title="Levier de marée (T)"><Icon name="tide" size={19}/><span>{game.tide === 'basse' ? 'Faire monter' : 'Faire descendre'}</span></button>}
       </div>
-      <button className="primary-button advance-button" disabled={busy || !canWalk} onClick={() => { setMode('walk'); act('walk', game?.canExit ? 16 : undefined); }}><Icon name="foot" size={20}/><span>{game?.canExit ? 'Vers la sortie' : game?.hero === -1 ? 'Entrer sur le chemin' : 'Avancer'}</span><Icon name="arrow" size={18}/></button>
+      <button className="primary-button advance-button" disabled={busy || !canWalk} onClick={() => { setMode('walk'); act('walk', game?.canExit ? dimensions.finish : undefined); }}><Icon name="foot" size={20}/><span>{game?.canExit ? 'Vers la sortie' : game?.hero === -1 ? 'Entrer sur le chemin' : 'Avancer'}</span><Icon name="arrow" size={18}/></button>
     </section>
     <div className={`status-line ${game?.hint ? 'with-hint' : ''} ${slideDestinations.length > 1 ? 'choosing-empty' : ''}`} role="status" aria-live="polite"><span className="status-dot"/><p>{notice}</p>{slideDestinations.length > 1 ? <div className="empty-options" aria-label="Choisir le vide">{slideDestinations.map(option => <button key={option.to} disabled={busy} onClick={() => act('slide', slideChoice, option.to)}>Vide {Math.floor(option.to/4)+1},{option.to%4+1}</button>)}<button onClick={() => { setSlideChoice(-1); setSelected(-2); setNotice('Choisissez une autre dalle.'); }}>×</button></div> : game?.hint && !game.won && <button disabled={busy} className="text-button" onClick={() => { setMode(game.hint.type === 'walk' ? 'walk' : 'slide'); act(game.hint.type, game.hint.index, game.hint.to); }}>Jouer cet indice <Icon name="arrow" size={14}/></button>}</div>
     <footer className="footer"><span>Un petit voyage, une pierre à la fois.</span><p><kbd>ESPACE</kbd> ou <kbd>CLIC MOLETTE</kbd> changer de mode <i/><kbd>ENTRÉE</kbd> avancer <i/><kbd>Z</kbd> annuler</p><span>CONCEPT & EXPLORATION <Icon name="diamond" size={12}/></span></footer>
 
-    {game?.won && !animating && !winDismissed && !modal && <div className="victory-wrap"><section className="victory" role="dialog" aria-label="Chapitre terminé">
+    {game?.lost && defeatReady && !animating && screen === 'game' && !modal && <Dialog title="Passage perdu" onClose={returnToMap} dismissible={false} className="defeat-dialog">
+      <div className="defeat-symbol" aria-hidden="true"><ShieldAlert size={30}/></div>
+      <p className="eyebrow">EXPÉDITION INTERROMPUE</p>
+      <h2>Pris au piège.</h2>
+      <p className="defeat-message">Le crocodile a attrapé Lumen. Ce passage s’arrête ici.</p>
+      <div className="defeat-actions">
+        <button className="primary-button" disabled={busy} onClick={() => act('reset')}><RotateCcw size={18}/>Recommencer</button>
+        <button className="text-button" disabled={busy} onClick={returnToMap}><MapIcon size={18}/>Revenir à la carte</button>
+      </div>
+    </Dialog>}
+
+    {game?.won && !game.lost && !animating && !winDismissed && !modal && <div className="victory-wrap"><section className="victory" role="dialog" aria-label="Chapitre terminé">
       <button className="icon-button victory-close" onClick={() => setWinDismissed(true)} aria-label="Admirer le plateau"><Icon name="close" size={17}/></button>
       <div className="victory-rays" aria-hidden="true">{Array.from({ length: 12 }, (_, i) => <i key={i} style={{ '--a': `${i * 30}deg`, animationDelay: `${i * .05}s` }}/>)}</div>
       <div className="victory-symbol"><Icon name="diamond" size={32}/></div>
@@ -681,25 +781,25 @@ function GameApp({ profile, onAccountChange }) {
     {modal === 'mechanic' && mechanic && <Dialog onClose={closeModal} title={mechanic.title}>
       <p className="eyebrow">LA RÈGLE DU LIEU · {biome.name.toUpperCase()}</p><h2>{mechanic.title}</h2>
       <p className="mechanic-explanation">{mechanic.text}</p>
-      <p className="help-tip"><Icon name="bulb" size={19}/> En mode Explorer, survolez une dalle stable pour voir le trajet sûr. Un indice propose une action adaptée à l’état du plateau.</p>
-      <p className="keyboard-note">Les dangers suivent leur dalle quand elle glisse ; les crocodiles en maraude, eux, arpentent des cases fixes. Annuler restaure aussi les dalles effondrées, la marée et la ronde des gardiens : vous pouvez essayer une autre stratégie.</p>
+      <p className="help-tip"><Icon name="bulb" size={19}/> En mode Explorer, l’aperçu signale les trajets dangereux. Les indices évitent les crocodiles.</p>
+      <p className="keyboard-note">Les dangers suivent leur dalle quand elle glisse ; les crocodiles en maraude, eux, arpentent des cases fixes. Avant une capture, Annuler restaure aussi les dalles effondrées, la marée et la ronde des gardiens.</p>
       <button className="primary-button" onClick={closeModal}>À moi de jouer <Icon name="arrow" size={18}/></button>
     </Dialog>}
     {modal === 'help' && <Dialog onClose={closeModal} title="Comment jouer">
       <p className="eyebrow">LE GUIDE DU VOYAGEUR</p><h2>Le chemin se construit<br/>sous vos pas.</h2>
       <div className="help-steps">
         <article><span>01</span><div><h3>Déplacez les dalles</h3><p>Cliquez sur une dalle voisine d’un vide pour la glisser. S’il y a plusieurs destinations, choisissez ensuite le vide sur le plateau ou avec les boutons affichés.</p></div><Icon name="grid" size={25}/></article>
-        <article><span>02</span><div><h3>Explorez quand vous voulez</h3><p>En mode Explorer, survolez une dalle stable pour voir le trajet, puis cliquez pour le parcourir. « Avancer » rejoint le prochain point d’arrêt sûr.</p></div><Icon name="foot" size={26}/></article>
+        <article><span>02</span><div><h3>Explorez quand vous voulez</h3><p>En mode Explorer, survolez une dalle pour voir le trajet, puis cliquez pour le parcourir. Les trajets exposés à un crocodile sont signalés comme dangereux.</p></div><Icon name="foot" size={26}/></article>
         <article><span>03</span><div><h3>Votre présence change le puzzle</h3><p>Une dalle occupée est verrouillée. Faites avancer l’aventurier, puis déplacez les pierres libérées. Rejoignez le portail pour terminer.</p></div><Icon name="lock" size={25}/></article>
       </div>
-      <div className="hazard-guide"><p><strong>Glace de Boréale</strong> · Lumen garde sa direction d’arrivée et ne peut ni tourner ni s’arrêter. Choisissez une dalle stable au-delà : le trajet complet est annoncé avant la traversée.</p><p><strong>Crocodiles</strong> · Leur dalle peut glisser, mais Lumen ne peut pas la traverser. Certains patrouillent : ils changent de pierre à chaque dalle déplacée, et la case qu’ils visent est signalée.</p><p><strong>Courants</strong> · La flèche impose la direction de sortie de cette dalle.</p><p><strong>Marée</strong> · Le levier inverse tous les courants et découvre les dalles immergées. Il compte comme un déplacement.</p><p><strong>Sceaux et portes</strong> · Une porte s’ouvre quand son sceau est actif : sous la pierre de lest, ou après que Lumen a touché le levier.</p><p><strong>Dalles fragiles</strong> · Rejoignez une dalle stable en une seule course. Les pierres fragiles tombent derrière vous, créent de nouveaux vides et lézardent leurs voisines fissurées.</p><p><strong>Trésors</strong> · Chaque relique est un cul-de-sac : elle coûte un détour et ne raccourcit jamais la route.</p></div>
+      <div className="hazard-guide"><p><strong>Glace de Boréale</strong> · Lumen garde sa direction d’arrivée et ne peut ni tourner ni s’arrêter. Choisissez une dalle stable au-delà : le trajet complet est annoncé avant la traversée.</p><p><strong>Crocodiles</strong> · Leurs cases sont accessibles, mais Lumen est capturé dès qu’il les atteint, même au milieu d’un trajet. Le passage est alors perdu : recommencez ou revenez à la carte. Certains patrouillent à chaque dalle déplacée ; leur prochaine case est signalée.</p><p><strong>Courants</strong> · La flèche impose la direction de sortie de cette dalle.</p><p><strong>Marée</strong> · Le levier inverse tous les courants et découvre les dalles immergées. Il compte comme un déplacement.</p><p><strong>Sceaux et portes</strong> · Une porte s’ouvre quand son sceau est actif : sous la pierre de lest, ou après que Lumen a touché le levier.</p><p><strong>Dalles fragiles</strong> · Rejoignez une dalle stable en une seule course. Les pierres fragiles tombent derrière vous, créent de nouveaux vides et lézardent leurs voisines fissurées.</p><p><strong>Trésors</strong> · Chaque relique est un cul-de-sac : elle coûte un détour et ne raccourcit jamais la route.</p></div>
       <p className="help-tip"><Icon name="bulb" size={19}/> Revenez sur vos pas quand le chemin le permet, ou annulez votre action. Un indice montre la prochaine action possible vers une solution.</p>
       <div className="shortcut-list"><span><kbd>ESPACE</kbd> ou <kbd>CLIC MOLETTE</kbd> Changer de mode</span><span><kbd>ENTRÉE</kbd> Avancer / déplacer la sélection</span><span><kbd>↑ ↓ ← →</kbd> Choisir une dalle / marcher</span><span><kbd>Z</kbd> Annuler <kbd>R</kbd> Recommencer <kbd>H</kbd> Indice <kbd>T</kbd> Marée</span></div>
       <p className="keyboard-note">Glissez sur le plateau pour tourner autour. La molette ou le pincement à deux doigts permet de zoomer. Un clic bref joue une dalle, un clic molette change de mode. Les flèches suivent les lignes du plateau : la vue du dessus facilite le jeu au clavier.</p>
       <button className="primary-button" onClick={closeModal}>L’aventure commence <Icon name="arrow" size={18}/></button>
     </Dialog>}
     {modal === 'levels' && <Dialog onClose={closeModal} title="Choisir un chapitre">
-      <p className="eyebrow">LES CHEMINS OUBLIÉS</p><h2>Quatre mondes.<br/>{levels.length || 29} passages.</h2><p className="dialog-intro">De la jungle à l’Atlantide, du volcan aux glaces de Boréale. Le grand nord combine la glisse et les épreuves apprises en chemin.</p>
+      <p className="eyebrow">LES CHEMINS OUBLIÉS</p><h2>Cinq mondes.<br/>{levels.length || 39} passages.</h2><p className="dialog-intro">De la jungle aux glaces de Boréale, puis jusqu’aux stations de l’espace et aux chemins qui entourent la Lune.</p>
       <div className="level-list">{BIOMES.map(world => <React.Fragment key={world.id}><h3 className="level-world-heading">{world.symbol} {world.name} · monde {world.world}</h3>{levels.filter(item => item.biome === world.id).map(item => {
         const shut = !isOpen(levels, progress, item.id);
         return <button className={`level-choice ${game?.levelId === item.id ? 'current' : ''} ${shut ? 'locked' : ''}`} key={item.id} disabled={busy || shut} onClick={() => loadLevel(item.id)}><span className="level-numeral">{String(item.chapter).padStart(2, '0')}</span><span><strong>{item.name}</strong><small>{shut ? `Verrouillé · terminez le niveau ${String(item.chapter - 1).padStart(2, '0')}` : `${item.difficulty} · passage ${item.biomeLevel} / ${levels.filter(other => other.biome === item.biome).length}${item.relicName ? ` · ${progress[item.id]?.relic ? '✦' : '✧'} ${item.relicName}` : ''}`}</small></span><Icon name={shut ? 'lock' : progress[item.id]?.completed ? 'check' : 'arrow'} size={22}/></button>;

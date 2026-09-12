@@ -49,9 +49,34 @@ export function createRouteMotion(points, speed = 3.4) {
   };
 }
 
+/** Les interactions attendent le centre de leur case, meme si le trajet continue. */
+export function hasReachedCell(motion, index) {
+  if (!motion) return true;
+  const step = motion.path.indexOf(index);
+  return step >= 0 && motion.distance >= motion.distances[step];
+}
+
+/** La capture partage une horloge avec la disparition du personnage. */
+export function sampleCaptureMotion(elapsed) {
+  const progress = Math.max(0, Math.min(1, (Number.isFinite(elapsed) ? elapsed : 0) / 1.2));
+  const smooth = (start, end) => {
+    const amount = Math.max(0, Math.min(1, (progress - start) / (end - start)));
+    return amount * amount * (3 - 2 * amount);
+  };
+  const swallowed = smooth(.25, .72);
+  return {
+    jawOpen: smooth(0, .2) * (1 - smooth(.45, .7)),
+    lunge: smooth(0, .25) * (1 - smooth(.55, .95)),
+    heroScale: 1 - swallowed,
+    heroLift: Math.sin(progress * Math.PI) * .18,
+    heroTilt: swallowed * .65,
+    complete: progress === 1,
+  };
+}
+
 /** Derive the preview from reciprocal path openings, never just adjacent cells. */
 export function findWalkPreview(state, destination) {
-  if (!state || state.won || state.hero === destination) return [];
+  if (!state || state.won || state.lost || state.hero === destination) return [];
   // The engine includes currents, crocodiles and all collapse decisions in these routes.
   if (state.walkRoutes) return state.walkRoutes[String(destination)] || [];
   const { size, tiles, hero } = state;
@@ -84,6 +109,11 @@ export function findWalkPreview(state, destination) {
     }
   }
   return [];
+}
+
+export function isCrocodileCell(state, index) {
+  return Boolean(state?.tiles?.[index] && (state.tiles[index].hazard === 'crocodile'
+    || state.guardians?.some(guard => guard.index === index)));
 }
 
 /** Choose the nearest safe stopping place reached through the requested adjacent cell. */

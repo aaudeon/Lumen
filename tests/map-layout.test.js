@@ -6,8 +6,8 @@ test('chaque biome possede sa geographie et son parcours', () => {
   const reliefs = Object.keys(MAP_REGIONS).map(biome =>
     JSON.stringify([150, 300, 450, 600, 750].flatMap(vertical =>
       [150, 300, 450, 600, 750].map(horizontal => terrainHeight(biome, horizontal, vertical)))));
-  assert.equal(new Set(reliefs).size, 4);
-  for (const [biome, count] of [['jungle',10],['atlantis',7],['volcano',7],['boreal',5]]) {
+  assert.equal(new Set(reliefs).size, Object.keys(MAP_REGIONS).length);
+  for (const [biome, count] of [['jungle',10],['atlantis',7],['volcano',7],['boreal',5],['space',10]]) {
     const stops = mapStops(biome, count);
     assert.deepEqual(stops.map(stop => [stop.x, stop.y]), MAP_REGIONS[biome].route);
     for (const stop of stops) {
@@ -34,6 +34,6 @@ test('le relief est stable et chaque destination repose sur une terre emergee', 
       assert.ok(Number.isFinite(height) && height > .1, `${biome}: ${horizontal},${vertical}`);
       assert.equal(terrainHeight(biome, horizontal, vertical), height);
     }
-    assert.ok(terrainHeight(biome, 0, 0) < 0);
+    if (biome !== 'space') assert.ok(terrainHeight(biome, 0, 0) < 0);
   }
 });

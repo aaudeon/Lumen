@@ -11,6 +11,9 @@ export const MAP_REGIONS = {
   boreal: {
     route: [[230, 760], [650, 620], [350, 450], [710, 300], [500, 140]],
   },
+  space: {
+    route: [[170, 755], [470, 780], [790, 740], [800, 525], [490, 520], [180, 535], [220, 300], [530, 295], [820, 280], [510, 100]],
+  },
 };
 
 /** Les bornes HTML et le chemin peint partagent le meme repere, meme apres un ajout de niveaux. */
@@ -35,6 +38,7 @@ const smoothStep = (low, high, value) => {
 
 /** Un relief deterministe permet au decor et aux bornes de partager exactement le meme sol. */
 export function terrainHeight(biome, horizontal, vertical) {
+  if (biome === 'space') return .65 + Math.sin(horizontal * .01 + vertical * .008) * .12;
   const ripple = Math.sin(horizontal * .027 + Math.cos(vertical * .018)) * .035
     + Math.sin(vertical * .043 + horizontal * .016) * .021;
   const ellipse = (centerX, centerY, radiusX, radiusY) => Math.hypot((horizontal - centerX) / radiusX, (vertical - centerY) / radiusY);

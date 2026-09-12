@@ -74,3 +74,28 @@ test('tile crocodiles use world-space attention even on a rotated board', () => 
   assert.ok(matrices(croc.root).every(Number.isFinite));
   croc.dispose();
 });
+
+test('both crocodile rigs capture without moving their cell and reset their pose', () => {
+  const tile = createTileHazard({ THREE, tile: { id: 'capture', hazard: 'crocodile', ports: ['E', 'W'] } });
+  const guardian = createGuardian({ THREE });
+  const actors = [
+    { root: tile.root, update: capture => tile.update(1, { capture, dt: 0 }) },
+    { root: guardian.root, update: capture => guardian.update(1, 0, false, { capture }) },
+  ];
+  for (const actor of actors) {
+    const origin = actor.root.position.clone();
+    const jaw = actor.root.getObjectByName('croc-jaw');
+    const body = actor.root.getObjectByName('croc-body');
+    actor.update(.24);
+    assert.ok(jaw.rotation.x > .9);
+    assert.ok(body.position.z > 0);
+    assert.ok(actor.root.position.equals(origin));
+    assert.ok(matrices(actor.root).every(Number.isFinite));
+    actor.update(1.2);
+    assert.equal(jaw.rotation.x, .06);
+    actor.update(null);
+    assert.equal(body.position.z, -.03);
+    assert.ok(actor.root.position.equals(origin));
+  }
+  tile.dispose(); guardian.dispose();
+});

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { terrainHeight } from './map-layout.js';
+import { createSpaceMapScene } from './space-scene.js';
 
 const THEMES = {
   jungle: { low: '#adad79', high: '#496d46', rock: '#72725b', water: '#236b66', leaves: ['#335d40','#50784b','#779956','#9cac69'], light: '#ffebbd', glow: '#ffe1a1', rim: '#a6dfbd' },
@@ -8,7 +9,8 @@ const THEMES = {
   boreal: { low: '#849daa', high: '#e4ece1', rock: '#71899b', water: '#355f7a', leaves: ['#527a78','#406866','#75908c','#cdded7'], light: '#e4f4ff', glow: '#c6fff0', rim: '#9cebd0' },
 };
 
-export function createMapScene(canvas, biome, stops, completed, onProject) {
+export function createMapScene(canvas, biome, stops, completed, onProject, levels = []) {
+  if (biome === 'space') return createSpaceMapScene(canvas, stops, completed, onProject, levels);
   const theme = THEMES[biome];
   const animationTime = { value: 0 };
   const atmosphereMaterials = [];

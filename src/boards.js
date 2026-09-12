@@ -1,6 +1,16 @@
 import { buildBorealBoard, buildBorealTile } from './boreal-board.js';
 /** Physical proportions and architectural identities; puzzle connectivity remains orthogonal. */
 const profiles = {
+  clairdelune: ['space','Le premier clair de Lune','surface',1,1,0],
+  tranquillite: ['space','Mer de la Tranquillité','surface',1,1,1],
+  terminateur: ['space','Ligne du terminateur','surface',1,1,2],
+  facecachee: ['space','La face cachée','surface',1,1,3],
+  selenite: ['space','Couronne de sélénite','surface',1,1,4],
+  orbite: ['space','Cube du sas orbital','volume',1,1,0],
+  transit: ['space','Station en transit','volume',1,1,1],
+  parallaxe: ['space','Puits des parallaxes','volume',1,1,2],
+  astrolabe: ['space','Astrolabe orbital','volume',1,1,3],
+  singularite: ['space','Coeur de la singularite','volume',1,1,4],
   banquise: ['boreal','Terrasses du lac miroir','lake',1.18,.94,0],
   aiguilles: ['boreal','Défilé des aiguilles','needles',.93,1.18,1],
   refuge: ['boreal','Parvis des veilleurs','refuge',1.12,1.03,2],

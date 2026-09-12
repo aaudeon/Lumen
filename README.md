@@ -1,6 +1,6 @@
 # LUMEN · Les chemins oubliés
 
-Un prototype jouable de **taquin d'aventure**, en React, Three.js et Python. Faites glisser les dalles pour guider Lumen de l'entrée à la sortie à travers **29 niveaux dans quatre mondes : la jungle, l'Atlantide, le volcan et Boréale**. Explorez le plateau en 3D sous tous les angles dans une ambiance d'expédition archéologique. Le décor, le personnage, les effets lumineux et les particules sont dessinés dans un canvas WebGL.
+Un prototype jouable de **taquin d'aventure**, en React, Three.js et Python. Faites glisser les dalles, puis les cubes, pour guider Lumen de l'entrée à la sortie à travers **39 niveaux dans cinq mondes : la jungle, l'Atlantide, le volcan, Boréale et l'espace**. Le cinquième monde propose des stations à tunnels en **3 × 3 × 3**, puis des lunes dont on parcourt les faces extérieures, jusque sous le cube. Le décor, le personnage, les effets lumineux et les particules sont dessinés dans un canvas WebGL.
 
 ## Lancer le jeu
 
@@ -32,25 +32,31 @@ python start.py --port 8766
 
 La connexion est obligatoire : créez un compte avec un pseudo et un mot de passe, puis retrouvez votre carnet. Il n'y a plus d'accès invité, même avec `?dev`. Une ancienne progression locale peut être reprise lors de l'inscription ; la connexion à un compte existant charge uniquement sa propre sauvegarde.
 
-Après connexion, le jeu s'ouvre sur une **carte d'expédition** : retrouvez les quatre mondes et leurs cartes distinctes, les passages d'origine, les épreuves et les cinq sanctuaires de Boréale, puis **Explorer**, **Reprendre** ou **Rejouer**. Les passages déjà terminés portent un sceau, la barre de progression compte les niveaux explorés et le **Carnet d'expédition** rassemble vos records. Les vingt-neuf niveaux s'ouvrent **l'un après l'autre** : un cadenas marque les passages encore fermés, et terminer un niveau déverrouille le suivant. Le carnet propose aussi de **recommencer l'aventure à zéro**, ce qui efface la progression du compte tout en conservant ses identifiants.
+Après connexion, le jeu s'ouvre sur une **carte d'expédition** : retrouvez les cinq mondes et leurs cartes distinctes, puis **Explorer**, **Reprendre** ou **Rejouer**. Les passages déjà terminés portent un sceau, la barre de progression compte les niveaux explorés et le **Carnet d'expédition** rassemble vos records. Les trente-neuf niveaux s'ouvrent **l'un après l'autre** : un cadenas marque les passages encore fermés, et terminer un niveau déverrouille le suivant. Le carnet propose aussi de **recommencer l'aventure à zéro**, ce qui efface la progression du compte tout en conservant ses identifiants.
 
-Le bouton **Carte** du plateau permet de revenir à l'accueil et de reprendre la partie en cours. Le chronomètre et le rendu 3D se mettent en pause dans l'accueil. Après une victoire, poursuivez vers le niveau suivant ou retrouvez votre progression sur la carte : le niveau 10 mène au 11 en Atlantide, le 17 au 18 dans le volcan, puis le 24 au 25 en Boréale.
+Le bouton **Carte** du plateau permet de revenir à l'accueil et de reprendre la partie en cours. Le chronomètre et le rendu 3D se mettent en pause dans l'accueil. Après une victoire, poursuivez vers le niveau suivant ou retrouvez votre progression sur la carte : le niveau 10 mène au 11 en Atlantide, le 17 au 18 dans le volcan, le 24 au 25 en Boréale, puis le 29 au 30 dans l'espace.
 
 Six passages cachent un **escalier**. Une pierre du plateau porte une gravure creusée dans sa face supérieure, invisible en perspective : basculez en **vue du dessus** pour la repérer, puis amenez Lumen dessus — elle n'est jamais sur le chemin de la sortie, il faut la glisser jusqu'à un couloir ou lui amener le couloir. La pierre sonne creux, l'escalier s'ouvre, et une carte propose de **descendre** dans une salle annexe, plus difficile, qui garde une relique et un **compagnon qu'aucune boutique ne vend**. On en remonte au portail du niveau d'origine, qu'il reste à franchir : explorer ne fait jamais perdre une partie. À la sortie d'un passage qui cache un escalier, le carnet note que « quelque chose sonnait creux » ; une fois l'escalier trouvé, la carte le marque et le carnet permet d'y redescendre directement.
 
 1. En mode **déplacer**, cliquez sur une dalle voisine d'un emplacement vide pour la faire glisser. Les flèches sur les dalles indiquent les glissades possibles, uniquement à l'horizontale ou à la verticale. Si plusieurs vides sont voisins de la même dalle, choisissez ensuite celui à utiliser sur le plateau ou avec les boutons proposés.
 2. **Une dalle occupée par Lumen est bloquée.** Son emplacement est une contrainte du puzzle : il faut parfois avancer avant de poursuivre le taquin.
-3. Passez en mode **explorer** à tout moment. Survolez une dalle accessible pour voir le trajet pointillé, puis cliquez pour faire marcher Lumen jusqu'à cet arrêt sûr. Les ouvertures des dalles doivent se faire face. L'aperçu et les indices tiennent compte des dangers et des courants.
+3. Passez en mode **explorer** à tout moment. Survolez une dalle accessible pour voir le trajet pointillé, puis cliquez pour faire marcher Lumen. Les ouvertures des dalles doivent se faire face. Les trajets exposés à un crocodile sont signalés comme dangereux ; les indices privilégient les chemins sûrs.
 4. Rejoignez la sortie pour terminer le niveau. Les cinq passages de chaque monde introduisent des contraintes propres à leur environnement. La règle du passage apparaît sur la carte et sur le plateau ; **Comment ça marche ?** en rappelle les détails.
 
 Vous pouvez alterner librement entre les deux modes : il n'est pas nécessaire de reconstituer tout le chemin avant d'avancer. **Annuler**, **Recommencer** et **Indice** permettent d'expérimenter. Annuler une marche fait revenir Lumen par son trajet exact, virages compris, et restaure les dalles effondrées lors de cette marche.
 
+### Le taquin spatial
+
+Un plateau contient **26 cubes et un vide**, répartis sur trois étages. Un cube voisin peut glisser vers le vide selon les trois axes, sans tourner ni transporter Lumen. Les tunnels se raccordent sur leurs six faces. La vue **Éclaté** sépare les étages et le sélecteur d'étage donne accès au cœur du volume. Les boutons fléchés permettent de monter ou descendre par un tunnel ; au clavier, **Page précédente / Page suivante** ajoutent l'axe vertical aux quatre flèches habituelles. Annulation, indices, trésors, scores et sauvegarde fonctionnent comme dans les autres mondes. Voir [le guide de l'espace](docs/espace.md).
+
 ### Les dangers et leurs usages
 
-- **Jungle — crocodiles :** Lumen ne peut pas traverser une dalle occupée par un crocodile. La dalle reste mobile : le crocodile voyage avec elle. Déplacez-la pour dégager le passage ou construire un détour.
+**Les lunes : marcher sur la surface.** Après les cinq stations, cinq passages lunaires conservent le taquin cubique mais remplacent les tunnels par des pistes sur les six faces extérieures. Lumen contourne les arêtes et marche tête en bas sous le cube ; le cœur et les faces internes restent interdits. La caméra, le sélecteur de face et **Voir Lumen** permettent d'inspecter ce petit monde opaque. Les stations précédentes gardent leurs tunnels et leur vue éclatée.
+
+- **Jungle — crocodiles :** leur case est accessible, mais Lumen est capturé à son arrivée, même s'il visait une case plus loin. La marche s'arrête au premier crocodile. Après une courte animation, l'écran d'échec propose **Recommencer** ou **Revenir à la carte** ; aucune autre action, y compris Annuler, n'est possible avant de recommencer. Les records acquis restent conservés. La dalle reste mobile : le crocodile voyage avec elle, ce qui permet de dégager un détour.
 - **Atlantide — courants :** une dalle marquée d'une flèche impose la direction de sortie de Lumen. Son entrée reste possible par les ouvertures reliées ; construisez le chemin dans le sens du courant.
 - **Volcan — dalles fragiles :** Lumen traverse les pierres fissurées en une seule course jusqu'à une dalle stable ou à la sortie. Il ne peut pas s'arrêter sur une pierre fragile. Les dalles s'effondrent derrière lui et laissent de nouveaux vides où faire glisser les pierres restantes. Certains passages demandent ainsi de traverser d'abord, puis de reconstruire la suite du chemin.
-- **Jungle — crocodiles en maraude :** dans les épreuves de la jungle, le gardien change de pierre à **chaque dalle déplacée**, le long d'une ronde fixe. Un anneau marque la case qu'il rejoindra ; il attend si elle est vide ou occupée. Sa pierre est verrouillée tant qu'il pèse dessus. Comptez vos déplacements pour passer dans son dos.
+- **Jungle — crocodiles en maraude :** dans les épreuves de la jungle, le gardien change de pierre à **chaque dalle déplacée**, le long d'une ronde fixe. Un anneau marque la case qu'il rejoindra ; il attend si elle est vide ou occupée. Sa pierre ne peut pas glisser tant qu'il pèse dessus, mais Lumen peut y entrer et être capturé. Comptez vos déplacements pour passer dans son dos.
 - **Jungle — sceaux et portes :** une porte de pierre barre le passage tant que son sceau reste éteint. Un **levier** s'allume dès que Lumen s'y arrête et le reste ; un **sceau à poids** n'est actif que tant que la **pierre de lest** l'occupe. Le puzzle consiste alors à livrer cette pierre au bon endroit.
 - **Atlantide — marées :** le levier de marée **inverse tous les courants** et découvre les **dalles immergées**. Il compte comme un déplacement, s'annule, et permet de franchir un palier puis l'autre.
 - **Volcan — réactions en chaîne :** une dalle qui s'effondre **lézarde ses voisines fissurées** : elles deviennent fragiles à leur tour. En mode explorer, l'aperçu d'un trajet colore les pierres qui tomberont et celles qui se fendront, pour choisir quels passages sacrifier.
@@ -112,7 +118,7 @@ Tests ciblés : `python -m unittest backend.test_accounts backend.test_engine.Ap
 
 **Faire mieux que la référence ne rapporte pas plus que l'atteindre** : il n'y a rien à optimiser au-delà de la solution d'auteur. À l'inverse, aucune part ne devient négative — une course lente et prudente garde ses 400 points de passage. Le multiplicateur va de 1 (Initiation, Découverte) à 2,5 (Légende), pour qu'un passage difficile vaille ce qu'il demande.
 
-Le **portefeuille** additionne votre **meilleure course sur chaque niveau**. Rejouer ne peut donc que l'augmenter, et refaire le premier niveau en boucle ne rapporte rien. Il s'affiche en haut de l'écran de jeu, dans l'en-tête de la carte et dans le carnet d'expédition, où chaque passage montre son propre record. Compter large : une campagne jouée sans chercher l'efficacité tourne autour de 32 000 points, le plafond théorique des 29 passages avec tous les trésors est de 62 980 points.
+Le **portefeuille** additionne votre **meilleure course sur chaque niveau**. Rejouer ne peut donc que l'augmenter, et refaire le premier niveau en boucle ne rapporte rien. Il s'affiche en haut de l'écran de jeu, dans l'en-tête de la carte et dans le carnet d'expédition, où chaque passage montre son propre record. Le plafond théorique des 39 passages avec leurs 27 trésors est de **85 100 points**, hors passages secrets.
 
 Le barème vit dans [src/score.js](src/score.js), à l'écart de l'interface, et `tests/score.test.js` le vérifie.
 
@@ -129,7 +135,7 @@ Les **huit emplacements** sont le couvre-chef, la cape ou les ailes, la lumière
 
 Le **portefeuille reste un record qui ne baisse jamais**. Les dépenses sont conservées séparément ; le solde disponible vaut portefeuille moins dépenses. Les achats et les tenues antérieurs restent compatibles.
 
-L'économie privilégie le choix : le catalogue complet coûte **114 100 crédits**, contre un **plafond théorique de 62 980 points** pour les 29 passages et leurs trésors. Un nouvel ensemble coûte **7 300 crédits** ; ses pièces vont de 300 à 1 700 crédits. Les douze animaux supplémentaires coûtent de 1 100 à 6 200 crédits. Les prix des pièces d'origine restent inchangés. Les raretés sont fixes et tous les prix sont visibles, sans tirage au sort. Rejouer sans améliorer son meilleur score ne crée pas de nouveaux crédits.
+L'économie privilégie le choix : le catalogue complet coûte **114 100 crédits**, contre un **plafond théorique de 85 100 points** pour les 39 passages et leurs trésors. Un nouvel ensemble coûte **7 300 crédits** ; ses pièces vont de 300 à 1 700 crédits. Les douze animaux supplémentaires coûtent de 1 100 à 6 200 crédits. Les prix des pièces d'origine restent inchangés. Les raretés sont fixes et tous les prix sont visibles, sans tirage au sort. Rejouer sans améliorer son meilleur score ne crée pas de nouveaux crédits.
 
 Tout est **cosmétique**. Les familiers n'agissent pas sur les dalles, les traces s'effacent derrière les pas et la parure reste attachée à la sortie. Les lumières éclairent réellement de leur couleur. Aucun objet ne change les règles, la difficulté, les indices ou les records.
 
@@ -145,7 +151,7 @@ Ils ne flottent pas sur place : le gréement leur applique un retard de suivi �
 
 Le fonctionnement, l'économie et l'ajout de collections ou de familiers sont décrits dans [docs/boutique.md](docs/boutique.md).
 
-## Les vingt-neuf passages
+## Les trente-neuf passages
 
 Les trois premiers mondes gardent leurs passages d'origine et leurs **épreuves**. Boréale prolonge cette progression avec cinq passages qui introduisent la glisse puis la combinent aux mécanismes existants.
 
@@ -154,6 +160,10 @@ Les trois premiers mondes gardent leurs passages d'origine et leurs **épreuves*
 - **Volcan · niveaux 18 à 24 :** Le seuil des cendres ; Le pont des braises ; La spirale d'obsidienne ; La forge des anciens ; Le cœur de la caldeira — puis Les premières fissures ; Le passage sacrifié.
 
 - **Boréale · niveaux 25 à 29 :** Le lac miroir ; Les aiguilles du nord ; Le refuge des veilleurs ; Le pont des séracs ; La couronne boréale. Sur la glace, Lumen doit aller tout droit sans s’arrêter. Les derniers niveaux combinent glisse, leviers, lest et effondrements. Voir [le guide de Boréale](docs/boreale.md).
+
+- **Espace · niveaux 30 à 34 :** Le sas orbital ; La station en transit ; Le puits des parallaxes ; L'astrolabe brisé ; Le cœur de la singularité. Cinq volumes 3 × 3 × 3, chacun avec ses tunnels verticaux et sa relique facultative. Voir [le guide de l'espace](docs/espace.md).
+
+- **Espace, Lune · niveaux 35 à 39 :** Le premier clair de Lune ; La mer de la Tranquillité ; La ligne du terminateur ; La face cachée ; La couronne de sélénite. Cinq lunes opaques, des pistes uniquement extérieures et une gravité locale qui suit chaque face. Les cinq stations à tunnels restent inchangées.
 
 - **Passages secrets · six salles annexes :** La crypte des racines (sous La vigie, 10) ; La salle noyée (sous L'estran, 17) ; La veine de magma (sous Le pont des braises, 19) ; Le cœur éteint (sous Le passage sacrifié, 24) ; Le lac sous la glace (sous Le pont des séracs, 28) ; La caverne sous les aurores (sous La couronne boréale, 29). Chacune reprend la règle de son monde en plus dur, cache une relique en cul-de-sac et remet un compagnon exclusif. Voir [les passages secrets](docs/passages-secrets.md).
 

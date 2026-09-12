@@ -23,6 +23,12 @@ export const BIOMES = [
     description:'Des épreuves sous les aurores. Apprivoisez la glace, préparez vos appuis et réveillez les refuges scellés.',
     arrival:'Traverser la banquise',symbol:'❄',
   },
+  {
+    id: 'space', name: 'Espace', world: 'V', title: 'Les cubes de l’infini',
+    headline: 'Au cœur du vide,', emphasis: 'les chemins orbitent.',
+    description: 'Des stations oubliées flottent entre les étoiles. Trois étages, six directions et un passage à retrouver en apesanteur.',
+    arrival: 'Entrer en orbite', symbol: '✧',
+  },
 ];
 
 export const getBiome = id => BIOMES.find(biome => biome.id === id) || BIOMES[0];

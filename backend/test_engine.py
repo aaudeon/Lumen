@@ -1,4 +1,5 @@
 """Run: python -m unittest discover -s backend -v"""
+from dataclasses import replace
 import http.client
 import json
 from pathlib import Path
@@ -10,10 +11,14 @@ import unittest
 
 try:
     from .engine import Game, GameError, LEVELS, SECRET_LEVELS, SECRET_SPURS, LEVEL_BY_ID, FINISH, OUTSIDE, paths_from, solve_plan, Tile, make_tiles, apply_plan, start_board, neighbors
-    from .server import GameServer
+    from .server import GameServer, CAMPAIGN_LEVELS
+    from .space import SPACE_LEVELS
+    from .lunar import LUNAR_LEVELS
 except ImportError:
     from engine import Game, GameError, LEVELS, SECRET_LEVELS, SECRET_SPURS, LEVEL_BY_ID, FINISH, OUTSIDE, paths_from, solve_plan, Tile, make_tiles, apply_plan, start_board, neighbors
-    from server import GameServer
+    from server import GameServer, CAMPAIGN_LEVELS
+    from space import SPACE_LEVELS
+    from lunar import LUNAR_LEVELS
 
 
 class RulesTests(unittest.TestCase):
@@ -268,6 +273,81 @@ class RulesTests(unittest.TestCase):
 
 
 class HazardTests(unittest.TestCase):
+    def test_crocodile_cell_is_reachable_and_ends_the_walk(self):
+        game = Game()
+        tiles = list(make_tiles("capture", ["WE"] * 16, 15))
+        tiles[0] = Tile("croc", ("W", "E"), "crocodile")
+        game.tiles = tuple(tiles)
+        self.assertTrue(game.state()["canEnter"])
+        self.assertIn(0, game.state()["reachable"])
+        state = game.act("walk", 0)
+        self.assertTrue(state["lost"])
+        self.assertFalse(state["won"])
+        self.assertEqual(state["caughtBy"], {"kind": "crocodile", "index": 0})
+        self.assertEqual(state["hero"], 0)
+        self.assertEqual(state["walkPath"], [-1, 0])
+
+    def test_crossing_stops_at_first_crocodile_without_later_interactions(self):
+        game = Game()
+        tiles = list(make_tiles("capture", ["WE"] * 16, 15))
+        tiles[1] = Tile("first-croc", ("W", "E"), "crocodile")
+        tiles[2] = Tile("second-croc", ("W", "E"), "crocodile", engraved=True)
+        game.level = replace(game.level, tiles=tuple(tiles), levers=(2,), relic=3, secret="crypte")
+        game.act("reset")
+        self.assertIn(3, game.state()["reachable"])
+        self.assertEqual(game.state()["walkRoutes"]["3"], [-1, 0, 1])
+        state = game.act("walk", 3)
+        self.assertTrue(state["lost"])
+        self.assertEqual(state["hero"], 1)
+        self.assertEqual(state["steps"], 2)
+        self.assertEqual(state["walkPath"], [-1, 0, 1])
+        self.assertFalse(state["relic"]["taken"])
+        self.assertFalse(state["levers"][0]["pulled"])
+        self.assertFalse(state["descent"]["revealed"])
+        self.assertFalse(state["descent"]["here"])
+
+    def test_capture_does_not_activate_objects_on_the_crocodile_cell(self):
+        game = Game()
+        tiles = list(make_tiles("capture", ["WE"] * 16, 15))
+        tiles[0] = Tile("croc", ("W", "E"), "crocodile", engraved=True)
+        game.level = replace(game.level, tiles=tuple(tiles), levers=(0,), relic=0, secret="crypte")
+        game.act("reset")
+        state = game.act("walk", 0)
+        self.assertTrue(state["lost"])
+        self.assertFalse(state["relic"]["taken"])
+        self.assertFalse(state["gatesOpen"])
+        self.assertFalse(state["descent"]["revealed"])
+
+    def test_patrol_capture_locks_the_game_until_restart(self):
+        game = Game("gardiens")
+        initial = game.state()
+        state = game.act("walk", 1)
+        self.assertTrue(state["lost"])
+        self.assertEqual(state["caughtBy"], {"kind": "guardian", "index": 1})
+        for action, index in (("walk", 0), ("slide", 10), ("tide", None), ("undo", None), ("hint", None)):
+            with self.subTest(action=action):
+                with self.assertRaisesRegex(GameError, "Recommencez"):
+                    game.act(action, index)
+                self.assertEqual(game.state(), state)
+        self.assertEqual(state["walkRoutes"], {})
+        self.assertEqual(state["slideOptions"], [])
+        self.assertFalse(state["canExit"])
+        self.assertFalse(state["canTide"])
+        self.assertEqual(game.act("reset"), initial)
+        self.assertFalse(game.act("walk", 0)["lost"])
+
+    def test_a_safe_detour_stays_preferred_to_a_crocodile_shortcut(self):
+        game = Game()
+        ports = ["WES", "WE", "WS", "", "NE", "WE", "WN", "", "", "", "", "", "", "", "", ""]
+        tiles = list(make_tiles("detour", ports, 15))
+        tiles[1] = Tile("croc", ("W", "E"), "crocodile")
+        game.tiles = tuple(tiles)
+        self.assertNotIn(1, paths_from(game.board, game.hero))
+        self.assertIn(1, game.state()["reachable"])
+        state = game.act("walk", 2)
+        self.assertEqual(state["walkPath"], [-1, 0, 4, 5, 6, 2])
+        self.assertFalse(state["lost"])
+
     def test_braises_requires_reusing_path_after_a_collapse(self):
         game = Game("braises")
         # A static path between opposite corners needs at least seven cells.
@@ -279,16 +359,12 @@ class HazardTests(unittest.TestCase):
         self.assertTrue(game.state()["won"])
         self.assertEqual(game.tiles[6].id, "braises-0")
 
-    def test_crocodile_blocks_walking_and_travels_with_its_stone(self):
+    def test_crocodile_travels_with_its_stone(self):
         game = Game()
         tiles = list(make_tiles("guard", ["WE"] * 16, 1))
         tiles[0] = Tile("croc", ("W", "E"), "crocodile")
         game.tiles = tuple(tiles)
-        before = game.state()
-        self.assertFalse(before["canEnter"])
-        with self.assertRaisesRegex(GameError, "crocodile"):
-            game.act("walk", 0)
-        self.assertEqual(game.state(), before)
+        self.assertTrue(game.state()["canEnter"])
         state = game.act("slide", 0, 1)
         self.assertEqual(state["tiles"][1]["id"], "croc")
         self.assertEqual(state["tiles"][1]["hazard"], "crocodile")
@@ -355,9 +431,7 @@ class TrialTests(unittest.TestCase):
         game = Game("gardiens")
         state = game.state()
         self.assertEqual(state["guardians"], [{"index": 1, "next": 2, "route": [1, 2, 6, 5]}])
-        self.assertNotIn(1, state["reachable"])
-        with self.assertRaisesRegex(GameError, "crocodile"):
-            game.act("walk", 1)
+        self.assertIn(1, state["reachable"])
         self.assertEqual(game.act("slide", 10)["guardians"][0]["index"], 2)
         state = game.act("slide", 14)
         self.assertEqual(state["guardians"][0]["index"], 6)
@@ -622,11 +696,11 @@ class ApiTests(unittest.TestCase):
         status, _, data = self.request("GET", "/api/levels")
         payload = json.loads(data)
         levels = payload["levels"]
-        self.assertEqual(len(levels), len(LEVELS))
+        self.assertEqual(len(levels), len(CAMPAIGN_LEVELS))
         self.assertEqual({item["id"] for item in payload["secrets"]}, {item.id for item in SECRET_LEVELS})
         self.assertTrue(all(item["host"] for item in payload["secrets"]))
         self.assertEqual([level["biome"] for level in levels],
-                         [level.biome for level in LEVELS])
+                         [level.biome for level in CAMPAIGN_LEVELS])
         status, headers, data = self.request("POST", "/api/game", {"levelId": "aube"})
         self.assertEqual(status, 200)
         self.assertIn("utf-8", headers["Content-Type"])
@@ -639,6 +713,45 @@ class ApiTests(unittest.TestCase):
         self.assertTrue(json.loads(data)["won"])
         status, _, data = self.request("GET", "/api/game?id=" + game_id)
         self.assertTrue(json.loads(data)["won"])
+
+    def test_http_space_game_uses_all_twenty_seven_cells(self):
+        status, _, data = self.request("POST", "/api/game", {"levelId": "orbite"})
+        self.assertEqual(status, 200)
+        state = json.loads(data)
+        self.assertEqual(state["boardKind"], "volume")
+        self.assertEqual((state["size"], state["depth"], len(state["tiles"])), (3, 3, 27))
+        for kind, index, *target in SPACE_LEVELS[0].solution:
+            action = {"gameId": state["id"], "type": kind, "index": index}
+            if target:
+                action["to"] = target[0]
+            status, _, data = self.request("POST", "/api/action", action)
+            self.assertEqual(status, 200, data)
+            state = json.loads(data)
+        self.assertTrue(state["won"])
+        self.assertEqual(state["hero"], 27)
+        status, _, data = self.request("POST", "/api/action", {"gameId": state["id"], "type": "undo"})
+        self.assertEqual(status, 200)
+        self.assertFalse(json.loads(data)["won"])
+
+    def test_http_lunar_game_reaches_the_underside_without_altering_orbital_levels(self):
+        status, _, data = self.request("POST", "/api/game", {"levelId": LUNAR_LEVELS[0].id})
+        self.assertEqual(status, 200)
+        state = json.loads(data)
+        self.assertEqual(state["boardKind"], "surface")
+        self.assertEqual(state["region"], "moon")
+        self.assertEqual(len(state["tiles"]), 27)
+        for kind, index, *target in LUNAR_LEVELS[0].solution:
+            action = {"gameId": state["id"], "type": kind, "index": index}
+            if target:
+                action["to"] = target[0]
+            status, _, data = self.request("POST", "/api/action", action)
+            self.assertEqual(status, 200, data)
+            state = json.loads(data)
+        self.assertTrue(state["won"])
+        self.assertEqual(state["heroFace"], "D")
+        self.assertEqual(state["hero"], state["finishIndex"])
+        self.assertEqual([level.biomeLevel for level in LUNAR_LEVELS], [6, 7, 8, 9, 10])
+        self.assertEqual(len(SPACE_LEVELS), 5)
 
     def test_http_rejects_malformed_and_missing_resources(self):
         cases = [

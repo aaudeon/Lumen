@@ -32,11 +32,13 @@ qui détectent les runtimes, décident s'il faut reconstruire, démarrent le ser
 Le projet n'est pas découpé pour faire joli : chaque frontière répond à une contrainte identifiable.
 
 **Le moteur est isolé parce que les règles sont subtiles et doivent être testables sans HTTP.**
-Le graphe de circulation est **orienté** — un crocodile bloque l'entrée sur une dalle, un courant contraint
-la direction de départ, une dalle fragile s'effondre derrière Lumen — et l'espace d'états du solveur est
-indexé sur le couple (plateau, héros). Le docstring de `connected_neighbors`
-([backend/engine.py:193](../backend/engine.py#L193)) le dit : « Directed edges: predators block entry;
-currents constrain departure ». Réimplémenter cela deux fois serait garanti de diverger. Conséquence
+Le graphe de circulation est **orienté** : un courant contraint la direction de départ et une dalle
+fragile s'effondre derrière Lumen. Les marches du joueur peuvent entrer sur une case crocodile ;
+`stop_at_crocodile` arrête le trajet à la première capture. Le solveur et les indices conservent des
+routes sûres via `paths_from`, sans cette autorisation. L'état expose `lost` et `caughtBy` ; après
+l'échec, seule l'action `reset` est acceptée. La scène anime la capture à l'arrivée, puis signale
+`onDefeat` avant `onSettled` pour afficher les choix de redémarrage et de retour à la carte.
+L'espace d'états du solveur reste indexé sur le couple (plateau, héros). Conséquence
 pratique : **25 des 30 tests** de [backend/test_engine.py](../backend/test_engine.py) n'ouvrent aucune
 socket (19 dans `RulesTests`, 6 dans `HazardTests` ; seuls les 5 tests d'`ApiTests` montent un serveur).
 

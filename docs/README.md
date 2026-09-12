@@ -1,6 +1,8 @@
 # Bienvenue dans LUMEN
 
-> **Boréale :** le quatrième monde, ses cinq passages et la règle de glisse sont décrits dans [Boréale](boreale.md). La campagne actuelle contient 29 niveaux et 17 reliques.
+> **Espace et Lune :** les cinq stations à tunnels 3 × 3 × 3 sont conservées et suivies de cinq lunes parcourues uniquement en surface. Voir [Espace](espace.md). La campagne contient désormais 39 niveaux et 27 reliques, hors passages secrets.
+
+> **Boréale :** le quatrième monde, ses cinq passages et la règle de glisse sont décrits dans [Boréale](boreale.md).
 
 > **Ajout du 10 septembre 2026 :** la refonte de la boutique, ses 80 entrées dont 18 familiers et son économie sont documentées dans [Boutique et collections](boutique.md). Le README racine décrit les commandes actuelles. Les autres documents de rétrodocumentation conservent leurs relevés datés.
 

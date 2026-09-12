@@ -26,6 +26,12 @@ const LEVELS = BIOMES.flatMap((world, index) => Array.from({ length: PER_WORLD }
   return { id: `n${chapter}`, chapter, biomeLevel: i + 1, biome: world.id,
     name: `Passage ${chapter}`, subtitle: 'Un chemin.', difficulty: 'Exploration', par: 5, stepPar: 9 };
 }));
+const LUNAR_START = LEVELS.length;
+LEVELS.push(...Array.from({ length: 5 }, (_, index) => ({
+  id: `n${LUNAR_START + index + 1}`, chapter: LUNAR_START + index + 1,
+  biomeLevel: PER_WORLD + index + 1, biome: 'space', boardKind: 'surface', region: 'moon',
+  name: `Lune ${index + 1}`, subtitle: 'Un chemin de surface.', difficulty: 'Aventure', par: 5, stepPar: 12,
+})));
 /** The levels of the nth world of the campaign. */
 const worldBlock = index => LEVELS.filter(level => level.biome === BIOMES[index].id);
 
@@ -97,6 +103,18 @@ shut(stop(worldDone, secondWorld[1].chapter), `${BIOMES[0].name} terminée · pa
 const allDone = screen(finished(LEVELS.length));
 check(!allDone.includes('lock-mark'), 'Campagne terminée · un cadenas subsiste');
 for (const world of BIOMES) open(worldTab(allDone, world.id), `Campagne terminée · onglet ${world.name}`);
+
+const afterStations = screen(finished(LUNAR_START));
+open(stop(afterStations, LUNAR_START + 1), 'Stations terminées · première lune');
+shut(stop(afterStations, LUNAR_START + 2), 'Stations terminées · deuxième lune');
+check(afterStations.includes('data-region="moon"'), 'Lune · les nouvelles destinations ne sont pas identifiées');
+
+const lostGame = { levelId: LEVELS[0].id, historyLength: 1, moves: 0, won: false, lost: true };
+const afterCapture = render({ ...props({}), currentGame: lostGame });
+open(play(afterCapture), 'Capture · nouveau départ disponible');
+check(play(afterCapture)?.includes('Recommencer'), 'Capture · le bouton ne propose pas de recommencer');
+check(!play(afterCapture)?.includes('Reprendre'), 'Capture · une partie perdue est présentée comme reprenable');
+check(afterCapture.includes('Expédition interrompue'), 'Capture · l’interruption n’est pas indiquée');
 
 // Starting over has to forget every key the game writes, or the reset lies.
 const appSource = readFileSync(new URL('src/App.jsx', root), 'utf8');

@@ -1,4 +1,5 @@
 import { blockGeometry } from './pets/voxel-shapes.js';
+import { sampleCaptureMotion } from './motion.js';
 
 /** A low, armoured jungle guardian. All pivots stay inside overlapping joints.
  * Awareness changes its pose only; patrols and collisions belong to the engine.
@@ -82,8 +83,9 @@ export function buildCrocodile(tools, parent, seed = 0) {
 
   const target = new THREE.Vector3();
   let alert = 0, gaze = 0, stride = seed, blinkClock = 1.8 + seed % 2;
-  animations.push((time, { walking = 0, dt = .016, heroPosition = null } = {}) => {
+  animations.push((time, { walking = 0, dt = .016, heroPosition = null, capture = null } = {}) => {
     dt = Math.max(0, Math.min(.1, dt));
+    const catching = capture === null ? null : sampleCaptureMotion(capture);
     let watch = 0, aim = 0;
     if (heroPosition) {
       parent.updateWorldMatrix(true, false);
@@ -95,13 +97,14 @@ export function buildCrocodile(tools, parent, seed = 0) {
     gaze += (aim * alert - gaze) * (1 - Math.exp(-dt * 6));
     stride += dt * (3 + walking * 8);
     body.position.y = .18 + Math.sin(time * 1.65 + seed) * .003 + Math.abs(Math.sin(stride)) * walking * .007;
+    body.position.z = -.03 + (catching?.lunge || 0) * .2;
     body.rotation.z = Math.sin(stride) * walking * .045;
     trunk.scale.y = .19 * (1 + Math.sin(time * 1.65 + seed) * .025);
     neck.rotation.y = gaze * (1 - walking * .45) + Math.sin(time * .45 + seed) * .09 * (1 - alert);
     neck.rotation.x = -.10 * alert - .025 * Math.sin(time * 1.1 + seed);
     const yawn = Math.max(0, Math.sin(time * .72 + seed)) ** 18 * (1 - alert);
     const warning = Math.max(0, Math.sin(time * 2.5 + seed)) ** 10 * alert;
-    jaw.rotation.x = .06 + yawn * .38 + alert * .15 + warning * .16;
+    jaw.rotation.x = catching ? .06 + catching.jawOpen * .9 : .06 + yawn * .38 + alert * .15 + warning * .16;
     tail.forEach((joint, i) => {
       joint.rotation.y = Math.sin(time * 1.5 + seed - i * .68) * (.09 + alert * .07)
         + Math.sin(stride - i * .65) * walking * .16;

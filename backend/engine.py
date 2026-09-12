@@ -46,8 +46,8 @@ MECHANICS = {
     "ice_master": ("Le serment de Boréale", "Deux leviers et une pierre de lest gardent la sortie. Préparez vos lignes de glisse, traversez le pont fragile, puis utilisez le vide libéré pour activer le sceau."),
     "fragile": ("Traversée éclair", "Rejoignez une pierre stable en une seule marche : les dalles fissurées s’effondrent derrière vous. Utilisez ces nouveaux vides pour déplacer les autres pierres."),
     "current": ("Courants à sens unique", "Sur une dalle à courant, Lumen peut seulement repartir dans le sens de la flèche. Placez ces pierres pour former un trajet dans le bon sens."),
-    "crocodile": ("Gardiens de la jungle", "Les crocodiles bloquent le passage. Déplacez leurs dalles pour dégager votre route : ils restent sur leur pierre."),
-    "patrol": ("Gardiens en maraude", "Le crocodile change de pierre à chaque dalle que vous déplacez. Sa prochaine case est annoncée : comptez vos déplacements pour passer dans son dos."),
+    "crocodile": ("Gardiens de la jungle", "Les cases crocodile sont accessibles, mais le contact met fin au passage. Déplacez leurs dalles ou préparez un détour pour éviter la capture."),
+    "patrol": ("Gardiens en maraude", "Le crocodile change de pierre à chaque dalle déplacée. Sa prochaine case est annoncée. Sa case actuelle reste accessible, mais y entrer met fin au passage."),
     "gate": ("Sceaux et portes", "Une porte de pierre barre le passage tant que son sceau reste éteint. Posez la pierre de lest sur le sceau, ou faites toucher le levier à Lumen, pour ouvrir la voie ailleurs sur le plateau."),
     "tide": ("La marée", "Le levier de marée inverse tous les courants et découvre les dalles immergées. Choisissez l’état du plateau qui ouvre la suite de votre route."),
     "chain": ("Réactions en chaîne", "Quand une dalle fissurée s’effondre, elle lézarde ses voisines : elles deviennent fragiles à leur tour. Choisissez quels passages sacrifier pour libérer de l’espace."),
@@ -137,12 +137,14 @@ class Board:
         """The one side a current allows, mirrored while the tide is low."""
         return OPPOSITE[tile.flow] if self.tide == LOW and tile.flow else tile.flow
 
-    def blocked(self, index):
+    def crocodile_at(self, index: int) -> bool:
+        return (0 <= index < FINISH and self.tiles[index] is not None
+                and (index in self.guard_cells or self.tiles[index].hazard == "crocodile"))
+
+    def blocked(self, index, *, allow_crocodiles: bool = False):
         """Cells the explorer may not step onto."""
         tile = self.tiles[index]
-        if tile is None or index in self.guard_cells:
-            return True
-        if tile.hazard == "crocodile":
+        if tile is None or (not allow_crocodiles and self.crocodile_at(index)):
             return True
         if tile.hazard == "gate" and not self.gates_open:
             return True
@@ -276,11 +278,11 @@ LEVELS = (
 LEVEL_BY_ID = {level.id: level for level in LEVELS}
 
 
-def connected_neighbors(board, position, heading=None):
-    """Directed edges: guardians and closed gates block entry, currents constrain departure."""
+def connected_neighbors(board, position, heading=None, *, allow_crocodiles: bool = False):
+    """Directed edges; player routes may enter crocodile cells, solver routes avoid them."""
     tiles = board.tiles
     if position == OUTSIDE:
-        if not board.blocked(0) and "W" in tiles[0].ports:
+        if not board.blocked(0, allow_crocodiles=allow_crocodiles) and "W" in tiles[0].ports:
             yield 0
         return
     if position == FINISH:
@@ -299,11 +301,12 @@ def connected_neighbors(board, position, heading=None):
     for side, destination in neighbors(position):
         other = tiles[destination]
         if (side in tile.ports and side in allowed and other
-                and not board.blocked(destination) and OPPOSITE[side] in other.ports):
+                and not board.blocked(destination, allow_crocodiles=allow_crocodiles)
+                and OPPOSITE[side] in other.ports):
             yield destination
 
 
-def paths_from(board, hero):
+def paths_from(board, hero, *, allow_crocodiles: bool = False):
     """Stable destinations; ice retains the incoming heading at intersections.
 
     Separate visits to the same ice tile from different sides must remain
@@ -314,7 +317,7 @@ def paths_from(board, hero):
     seen = {(hero, None)}
     while queue:
         at, heading, path = queue.popleft()
-        for destination in connected_neighbors(board, at, heading):
+        for destination in connected_neighbors(board, at, heading, allow_crocodiles=allow_crocodiles):
             if destination in path:
                 continue
             icy = 0 <= destination < FINISH and board.tiles[destination].hazard == "ice"
@@ -326,10 +329,22 @@ def paths_from(board, hero):
             seen.add(key)
             route = path + [destination]
             if (destination in {OUTSIDE, FINISH}
+                    or allow_crocodiles and board.crocodile_at(destination)
                     or board.tiles[destination].hazard not in {"fragile", "ice"}):
                 paths.setdefault(destination, route)
             queue.append((destination, incoming, route))
+    if allow_crocodiles:
+        # Un detour sur reste prioritaire ; les indices utilisent uniquement ces routes sures.
+        paths.update(paths_from(board, hero))
     return paths
+
+
+def stop_at_crocodile(board: Board, path: list[int]) -> tuple[list[int], dict | None]:
+    for step, index in enumerate(path[1:], 1):
+        if board.crocodile_at(index):
+            kind = "guardian" if index in board.guard_cells else "crocodile"
+            return path[:step + 1], {"kind": kind, "index": index}
+    return path, None
 
 
 def walk_impact(board, path):
@@ -352,7 +367,7 @@ def walk_result(board, hero, destination, paths=None):
     paths = paths if paths is not None else paths_from(board, hero)
     if destination not in paths or destination == hero:
         raise GameError("Le chemin vers cette case n’est pas encore relié dans le bon sens.")
-    path = paths[destination]
+    path, caught_by = stop_at_crocodile(board, paths[destination])
     collapsed, weakened = walk_impact(board, path)
     tiles = list(board.tiles)
     for index in weakened:
@@ -360,10 +375,11 @@ def walk_result(board, hero, destination, paths=None):
     for event in collapsed:
         tiles[event["index"]] = None
     pulled = board.pulled
-    if destination in board.level.levers and destination not in pulled:
+    if not caught_by and destination in board.level.levers and destination not in pulled:
         pulled = tuple(sorted(pulled + (destination,)))
     report = {"collapsed": collapsed, "weakened": weakened,
-              "relic": board.level.relic is not None and board.level.relic in path}
+              "relic": board.level.relic is not None and board.level.relic in (path[:-1] if caught_by else path),
+              "caughtBy": caught_by}
     return replace(board, tiles=tuple(tiles), pulled=pulled), path, report
 
 
@@ -441,6 +457,7 @@ class Game:
         self.pulled = ()
         self.relic = False
         self.revealed = False
+        self.caught_by = None
         self.hero = OUTSIDE
         self.previous_hero = None
         self.moves = self.steps = 0
@@ -468,13 +485,15 @@ class Game:
 
     def state(self):
         board = self.board
-        paths = paths_from(board, self.hero)
+        lost = self.caught_by is not None
+        paths = {} if lost else paths_from(board, self.hero, allow_crocodiles=True)
         won = self.hero == FINISH
-        options = [] if won else slide_options(board, self.hero)
+        options = [] if won or lost else slide_options(board, self.hero)
         level = self.level
         impact = {}
         if any(tile and tile.hazard in {"fragile", "brittle"} for tile in self.tiles):
             for index, path in paths.items():
+                path, _ = stop_at_crocodile(board, path)
                 collapsed, weakened = walk_impact(board, path)
                 if collapsed or weakened:
                     impact[str(index)] = {"collapse": [event["index"] for event in collapsed],
@@ -488,25 +507,26 @@ class Game:
                       for t in self.tiles],
             "hero": self.hero, "entry": {"index": 0, "side": "W"},
             "exit": {"index": 15, "side": "E"}, "moves": self.moves,
-            "steps": self.steps, "won": won,
+            "steps": self.steps, "won": won, "lost": lost, "caughtBy": self.caught_by,
             "reachable": sorted(i for i in paths if 0 <= i < FINISH),
-            "walkRoutes": {str(i): path for i, path in paths.items() if i != self.hero},
+            "walkRoutes": {str(i): stop_at_crocodile(board, path)[0]
+                           for i, path in paths.items() if i != self.hero},
             "walkImpact": impact,
             "emptyCells": [i for i, tile in enumerate(self.tiles) if tile is None],
             "slideOptions": [{"index": source, "to": target} for source, target in options],
             "slidable": sorted({source for source, _ in options}),
             "canEnter": self.hero == OUTSIDE and any(i >= 0 for i in paths),
-            "canExit": not won and FINISH in paths,
+            "canExit": not won and FINISH in paths and stop_at_crocodile(board, paths[FINISH])[1] is None,
             "guardians": guard_preview(board, self.hero),
             "levers": [{"index": cell, "pulled": cell in self.pulled} for cell in level.levers],
             "seals": [{"index": cell, "pressed": board.pressed(cell)} for cell in level.seals],
             "gatesOpen": board.gates_open,
-            "tide": self.tide, "canTide": bool(level.tide) and not won,
+            "tide": self.tide, "canTide": bool(level.tide) and not won and not lost,
             "relic": None if level.relic is None else
                      {"index": level.relic, "name": level.relicName, "taken": self.relic},
             "descent": None if not level.secret else {
                 "level": level.secret, "revealed": self.revealed,
-                "here": 0 <= self.hero < FINISH and bool(self.tiles[self.hero])
+                "here": not lost and 0 <= self.hero < FINISH and bool(self.tiles[self.hero])
                         and self.tiles[self.hero].engraved},
             "historyLength": len(self.history), "hint": self.hint,
             "message": self.message, "collapsed": self.collapsed, "weakened": self.weakened,
@@ -516,6 +536,8 @@ class Game:
     def act(self, action, index=None, to=None):
         if not isinstance(action, str) or action not in {"slide", "walk", "tide", "undo", "reset", "hint"}:
             raise GameError("Action inconnue.")
+        if self.caught_by and action != "reset":
+            raise GameError("Le crocodile a attrape Lumen. Recommencez ce passage.")
         if to is not None and (action != "slide" or not valid_index(to)):
             raise GameError("Choisissez un vide valide pour ce déplacement.")
         if action == "slide":
@@ -592,7 +614,7 @@ class Game:
         if self.hero == FINISH:
             raise GameError("Lumen est arrivé à destination.")
         board = self.board
-        paths = paths_from(board, self.hero)
+        paths = paths_from(board, self.hero, allow_crocodiles=True)
         if index is None:
             # Advance to the closest stable landing place, automatically crossing
             # a run of fragile cells without allowing an unsafe intermediate stop.
@@ -608,33 +630,33 @@ class Game:
             raise GameError("Lumen se trouve déjà sur cette case.")
         if 0 <= index < FINISH and self.tiles[index]:
             hazard = self.tiles[index].hazard
-            if index in board.guard_cells or hazard == "crocodile":
-                raise GameError("Un crocodile garde cette pierre. Attendez qu’il s’écarte, ou contournez sa dalle.")
             if hazard == "gate" and not board.gates_open:
                 raise GameError("Cette porte est close. Activez son sceau pour l’ouvrir.")
             if hazard == "submerged" and self.tide == HIGH:
                 raise GameError("Cette dalle dort sous l’eau. Faites descendre la marée pour la découvrir.")
-            if hazard == "fragile":
+            if hazard == "fragile" and not board.crocodile_at(index):
                 raise GameError("Cette dalle va s’effondrer : choisissez une pierre stable au-delà pour la traverser sans arrêt.")
-            if hazard == "ice":
+            if hazard == "ice" and not board.crocodile_at(index):
                 raise GameError("Impossible de s’arrêter sur la glace : choisissez une dalle stable dans le prolongement, sans virage.")
         next_board, path, report = walk_result(board, self.hero, index, paths)
         had_relic = self.relic
         self._save(path)
         self._adopt(next_board)
+        self.caught_by = report["caughtBy"]
         self.previous_hero = path[-2]
-        self.hero = index
+        self.hero = path[-1]
         self.steps += len(path) - 1
         self.walk_path = path
         self.collapsed = report["collapsed"]
         self.weakened = report["weakened"]
         self.relic = had_relic or report["relic"]
         # Standing on the engraved stone opens the way down, once and for good.
-        opened = (0 <= index < FINISH and self.tiles[index].engraved
+        opened = (not self.caught_by and 0 <= index < FINISH and self.tiles[index].engraved
                   and bool(self.level.secret) and not self.revealed)
         self.revealed = self.revealed or opened
         self.hint = None
         self.message = (
+            "Le crocodile a attrape Lumen. Le passage est perdu." if self.caught_by else
             "Le passage est accompli !" if index == FINISH else
             "La pierre sonne creux. Un escalier s’ouvre sous vos pieds." if opened else
             f"Vous emportez {self.level.relicName} !" if report["relic"] and not had_relic else

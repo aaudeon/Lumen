@@ -168,6 +168,21 @@ button.journal-secret:hover:not(:disabled) em{color:#a8ffdc}
 
 /* Le centrage du son ne depend pas de sa position parmi les actions de l'en-tete. */
 .home-header-actions button.home-sound-toggle{display:grid;place-items:center;flex-shrink:0;width:37px;height:37px;padding:0;line-height:1;border-radius:50%}
+
+.expedition-home[data-biome=space]{--map-light:191,234,211;--glass-top:rgba(106,144,134,.23);--glass-bottom:rgba(13,28,29,.78);background:linear-gradient(155deg,#1c2d2a,#0c141b 65%,#111b1a)}
+.expedition-home[data-biome=space] .home-ambient{background:none}
+.expedition-home[data-biome=space] .home-intro h1 em{color:#c4e7d3}
+.expedition-home[data-biome=space] .map-fireflies,.expedition-home[data-biome=space] .map-compass{display:none}
+.expedition-home[data-biome=space] .mechanic-tag{color:#bde5cd;border-color:#a2ddc24d}
+.biome-tabs{border-radius:8px}
+.biome-tabs button{min-width:98px}
+.biome-tabs button[data-world=space]>span{color:#c4e7d3}
+.expedition-home[data-region=moon]{--map-light:222,228,237;--glass-top:rgba(133,145,162,.23);--glass-bottom:rgba(18,29,37,.8)}
+.expedition-home[data-biome=space] .map-stop-caption{width:124px;min-width:0;max-width:124px;white-space:normal;line-height:1.35}
+.expedition-home[data-biome=space] .map-stop-caption strong{white-space:normal}
+.expedition-home .map-stop[data-region=moon] .map-stop-number{border-color:#c6d2df8a;background:#34454ae8;color:#e0e8e7}
+.expedition-home .map-stop[data-region=moon].chosen .map-stop-number{background:#e0e4d6;color:#27353a;border-color:#f2e7c7}
+@media(max-width:700px){.biome-tabs{max-width:100%;overflow-x:auto;justify-content:flex-start;scrollbar-width:thin}.biome-tabs button{flex:0 0 82px;min-width:82px}.biome-tabs button>span{display:none}}
 .home-sound-toggle svg{display:block}
 .home-header-actions .home-sound-toggle[aria-pressed=true]{color:#e7d298;border-color:#d4bc8059;background:#d4bc8010}
 .home-header-actions .home-sound-toggle:focus-visible{outline:2px solid #e7d298;outline-offset:3px}

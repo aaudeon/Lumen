@@ -17,12 +17,17 @@ from urllib.parse import parse_qs, unquote, urlsplit
 try:
     from .accounts import AccountStore, AccountError, SESSION_SECONDS
     from .engine import Game, GameError, LEVELS, SECRET_LEVELS
+    from .space import SpaceGame, SPACE_LEVELS, SPACE_LEVEL_BY_ID
+    from .lunar import LunarGame, LUNAR_LEVELS, LUNAR_LEVEL_BY_ID
 except ImportError:
     from accounts import AccountStore, AccountError, SESSION_SECONDS
     from engine import Game, GameError, LEVELS, SECRET_LEVELS
+    from space import SpaceGame, SPACE_LEVELS, SPACE_LEVEL_BY_ID
+    from lunar import LunarGame, LUNAR_LEVELS, LUNAR_LEVEL_BY_ID
 
 DIST = Path(__file__).resolve().parent.parent / "dist"
 MAX_BODY = 64 * 1024
+CAMPAIGN_LEVELS = LEVELS + SPACE_LEVELS + LUNAR_LEVELS
 
 
 class GameServer(ThreadingHTTPServer):
@@ -176,7 +181,7 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path.startswith("/api/") and not self._authorize_game():
             return
         if parsed.path == "/api/levels":
-            return self._json(200, {"levels": [level.public() for level in LEVELS],
+            return self._json(200, {"levels": [level.public() for level in CAMPAIGN_LEVELS],
                                     "secrets": [level.public() for level in SECRET_LEVELS]})
         if parsed.path == "/api/game":
             try:
@@ -211,7 +216,11 @@ class Handler(BaseHTTPRequestHandler):
                     self._limit("new-game", 20, 60, self.account["user"]["id"])
                     if set(body) - {"levelId"}:
                         raise GameError("Paramètre de création inconnu.")
-                    game = Game(body.get("levelId", "aube"))
+                    level_id = body.get("levelId", "aube")
+                    factory = SpaceGame if isinstance(level_id, str) and level_id in SPACE_LEVEL_BY_ID else Game
+                    if isinstance(level_id, str) and level_id in LUNAR_LEVEL_BY_ID:
+                        factory = LunarGame
+                    game = factory(level_id)
                     if len(self.server.games) >= 256:
                         oldest = next(iter(self.server.games))
                         del self.server.games[oldest]

@@ -9,10 +9,12 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { createRouteMotion, findWalkPreview } from './motion.js';
+import { createRouteMotion, hasReachedCell, sampleCaptureMotion, findWalkPreview, isCrocodileCell } from './motion.js';
 import { createTileHazard, createCollapseEffects, createGuardian, createCellFeature } from './hazards.js';
 import { createBoardTextures } from './board-textures.js';
 import { getBoardProfile, createBoardStructure, createTileScenery } from './boards.js';
+import { createSpaceScene } from './space-scene.js';
+import { createLunarScene } from './lunar-scene.js';
 
 const GAP = 1.34;
 const DIR = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] };
@@ -30,6 +32,36 @@ const TOP_DIR = new THREE.Vector3(0.01, 17.8, 0.9).normalize();
 const ORIGIN = new THREE.Vector3();
 
 export function createGameScene(host, callbacks) {
+  let current = createPlanarScene(host, callbacks);
+  let boardKind = 'plane';
+  const settings = { active: true, view: 'iso', style: callbacks.style, safe: null, volume: { expanded: false, layer: -1 }, surface: 'free' };
+  return {
+    update(next, mode, selected) {
+      if (!next) return;
+      const kind = ['volume', 'surface'].includes(next.boardKind) ? next.boardKind : 'plane';
+      if (kind !== boardKind) {
+        current.dispose(); boardKind = kind;
+        const factory = kind === 'surface' ? createLunarScene : kind === 'volume' ? createSpaceScene : createPlanarScene;
+        current = factory(host, { ...callbacks, style: settings.style });
+        current.setActive(settings.active);
+        if (settings.safe) current.setSafeArea(settings.safe);
+        current.setView(settings.view);
+        current.setVolumeView?.(settings.volume);
+        current.setSurfaceView?.(settings.surface);
+      }
+      current.update(next, mode, selected);
+    },
+    setSafeArea(value) { settings.safe = value; current.setSafeArea(value); },
+    setView(value) { settings.view = value; current.setView(value); },
+    setVolumeView(value) { settings.volume = value; current.setVolumeView?.(value); },
+    setSurfaceView(value) { settings.surface = value; current.setSurfaceView?.(value); },
+    setExplorerStyle(value) { settings.style = value; current.setExplorerStyle(value); },
+    setActive(value) { settings.active = value; current.setActive(value); },
+    dispose() { current.dispose(); },
+  };
+}
+
+function createPlanarScene(host, callbacks) {
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(0x193b2d, 0.026);
   const camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.1, 100);
@@ -135,6 +167,9 @@ export function createGameScene(host, callbacks) {
   let pendingVictory = false;
   let pendingTreasure = false;
   let pendingDescent = false;
+  let pendingDefeat = false;
+  let captureMotion = null;
+  const captureTarget = new THREE.Vector3();
   const heroWorld = new THREE.Vector3();
   const materials = new Set();
   const geometries = new Set();
@@ -230,6 +265,9 @@ export function createGameScene(host, callbacks) {
   function updatePreview() {
     const destination = state?.hint?.type === 'walk' ? state.hint.index : mode === 'walk' ? (focus >= -1 ? focus : hovered) : -2;
     const route = findWalkPreview(state, destination);
+    const dangerous = route.some(index => isCrocodileCell(state, index));
+    previewMaterial.color.set(dangerous ? 0xff9e83 : biomePalette.connected);
+    previewRingMaterial.color.set(dangerous ? 0xff9e83 : biomePalette.connected);
     let count = 0;
     for (let i = 1; i < route.length; i++) {
       const from = heroPosition(route[i - 1]);
@@ -246,7 +284,7 @@ export function createGameScene(host, callbacks) {
     previewDots.count = heroMotion ? 0 : count;
     previewDots.instanceMatrix.needsUpdate = true;
     previewRing.visible = count > 0 && !heroMotion;
-    if (previewRing.visible) { previewRing.position.copy(heroPosition(destination)); previewRing.position.y += .04; }
+    if (previewRing.visible) { previewRing.position.copy(heroPosition(route.at(-1))); previewRing.position.y += .04; }
   }
   // All world particles share a small radial canvas texture.
   const glowCanvas = document.createElement('canvas');
@@ -368,6 +406,7 @@ export function createGameScene(host, callbacks) {
     }
     list.forEach((info, order) => {
       const entry = guardians[order];
+      entry.index = info.index;
       entry.target.copy(cellPosition(info.index));
       entry.next = info.next;
       entry.marker.visible = info.next !== info.index;
@@ -382,6 +421,7 @@ export function createGameScene(host, callbacks) {
 
   // Pressure seals, levers and the level's optional treasure belong to a cell.
   const features = [];
+  let interactionState = null;
   function syncFeatures() {
     const wanted = [
       ...(state?.seals || []).map(seal => ({ kind: 'seal', index: seal.index, value: seal.pressed })),
@@ -397,15 +437,41 @@ export function createGameScene(host, callbacks) {
         const feature = createCellFeature({ THREE, kind: item.kind,
           palette: { gold: biomePalette.gold, gem: biomePalette.connectedGlow } });
         world.add(feature.root);
-        features.push({ ...item, feature });
+        features.push({ ...item, value: null, feature });
       }
     }
     features.forEach((item, order) => {
-      item.feature.set(wanted[order].value);
+      item.targetValue = wanted[order].value;
       item.feature.root.position.copy(cellPosition(item.index));
       // A fitting left over a hole settles to the bottom of the pit.
       item.feature.root.position.y = state?.tiles[item.index] ? .36 : .04;
     });
+    applyFeatureStates();
+  }
+
+  function applyFeatureStates() {
+    if (!state) return;
+    let changed = interactionState?.gameId !== state.id;
+    for (const item of features) {
+      if (item.value === item.targetValue || !hasReachedCell(heroMotion, item.index)) continue;
+      item.value = item.targetValue;
+      item.feature.set(item.value);
+      changed = true;
+    }
+    const descentRevealed = Boolean(state.descent?.revealed
+      && (!pendingDescent || hasReachedCell(heroMotion, state.hero)));
+    if (!changed && descentRevealed === interactionState?.descentRevealed) return;
+    interactionState = {
+      gameId: state.id,
+      relicTaken: Boolean(features.find(item => item.kind === 'relic')?.value),
+      gatesOpen: features.every(item => item.kind === 'relic' || item.value),
+      descentRevealed,
+    };
+    for (const data of tiles.values()) {
+      data.hazard.apply({ gatesOpen: interactionState.gatesOpen, tide: state.tide, heading: data.tile.heading });
+      if (data.stairs) data.stairs.visible = descentRevealed;
+    }
+    callbacks.onInteractions?.(interactionState);
   }
 
   function buildTile(tile, index) {
@@ -558,6 +624,15 @@ export function createGameScene(host, callbacks) {
     mode = nextMode;
     focus = selected;
     if (!next) return;
+    if (!next.lost || currentLevel !== next.id) {
+      captureMotion = null;
+      pendingDefeat = false;
+      hero.visible = true;
+      hero.scale.setScalar(1);
+      hero.rotation.x = hero.rotation.z = 0;
+      heroRing.visible = true;
+      if (previous?.lost) explorer.react('reset');
+    }
     if (currentLevel !== next.id) setBoardProfile(getBoardProfile(next.levelId));
     const nextBiome = Object.hasOwn(BIOME_PALETTES, next.biome) ? next.biome : 'jungle';
     if (nextBiome !== currentBiome) setBiome(nextBiome);
@@ -572,6 +647,7 @@ export function createGameScene(host, callbacks) {
       }
       collapseEffects.clear();
       pendingTreasure = false;
+      pendingDescent = false;
       explorer.react('reset');
       currentLevel = next.id;
       hero.position.copy(heroPosition(next.hero));
@@ -587,7 +663,8 @@ export function createGameScene(host, callbacks) {
         data.hazard = createTileHazard({ THREE, tile });
         data.group.add(data.hazard.root);
       }
-      data.hazard.apply({ gatesOpen: next.gatesOpen, tide: next.tide, heading: tile.heading });
+      data.hazard.apply({ gatesOpen: interactionState?.gameId === next.id ? interactionState.gatesOpen : next.gatesOpen,
+        tide: next.tide, heading: tile.heading });
       if (data.collapseDistance !== null || data.fallStartedAt !== null) {
         data.group.position.copy(cellPosition(index));
         data.group.rotation.set(0, 0, 0);
@@ -627,10 +704,20 @@ export function createGameScene(host, callbacks) {
     if (previous?.id === next.id && next.relic?.taken && !previous?.relic?.taken) pendingTreasure = true;
     if (previous?.id === next.id && next.descent?.revealed && !previous?.descent?.revealed) pendingDescent = true;
     if (!next.descent?.revealed) pendingDescent = false;
-    for (const data of tiles.values()) if (data.stairs) data.stairs.visible = Boolean(next.descent?.revealed);
+    for (const data of tiles.values()) if (data.stairs) data.stairs.visible = Boolean(next.descent?.revealed && !pendingDescent);
     if (!next.relic?.taken) pendingTreasure = false;
     syncGuardians();
     syncFeatures();
+    if (next.lost && (previous?.id !== next.id || !previous.lost)) {
+      const catcher = next.caughtBy?.kind === 'guardian'
+        ? guardians.find(guard => guard.index === next.caughtBy.index)?.actor.root
+        : [...tiles.values()].find(data => data.index === next.caughtBy?.index)?.hazard.root;
+      captureMotion = { startedAt: previous?.id === next.id ? null : performance.now() / 1000 - 1.2,
+        complete: false, mouth: catcher?.getObjectByName('croc-jaw') };
+      pendingDefeat = true;
+      pendingVictory = false;
+      pendingDescent = false;
+    }
     if (next.won && !previous?.won) pendingVictory = true;
     if (!next.won) pendingVictory = false;
     updateColors();
@@ -697,6 +784,7 @@ export function createGameScene(host, callbacks) {
       }
       const occupied = state.hero === i;
       const reachable = state.reachable.includes(i);
+      const dangerous = isCrocodileCell(state, i);
       const slidable = state.slidable.includes(i);
       const active = mode === 'slide' ? slidable : reachable && !occupied;
       const hilite = hovered === i || focus === i;
@@ -722,8 +810,8 @@ export function createGameScene(host, callbacks) {
       data.tileMat.color.set(occupied ? color.occupied : hilite && active ? color.hover : active ? color.active : color.tile);
       data.tileMat.emissive.set(doomed ? 0x8c3410 : cracking ? 0x6d4a12 : isHint ? 0x625b2d : active && hilite ? color.highlight : 0x000000);
       data.tileMat.emissiveIntensity = doomed ? 0.85 : cracking ? 0.5 : isHint ? 0.55 : 0.2;
-      data.pathMat.color.set(reachable ? color.connected : color.path);
-      data.traceMat.color.set(occupied ? color.gold : reachable ? color.connected : color.trace);
+      data.pathMat.color.set(reachable && dangerous ? 0xeeb096 : reachable ? color.connected : color.path);
+      data.traceMat.color.set(occupied ? color.gold : reachable && dangerous ? 0xff9e83 : reachable ? color.connected : color.trace);
       data.traceMat.emissive.set(occupied ? color.gold : reachable ? color.connectedGlow : color.traceGlow);
       data.traceMat.emissiveIntensity = reachable ? 1.1 : 0.15;
     }
@@ -950,9 +1038,18 @@ export function createGameScene(host, callbacks) {
       if (sample.heading !== null) heroHeading = sample.heading;
       if (sample.complete) heroMotion = null;
     }
+    if (captureMotion && !heroMotion && captureMotion.startedAt === null) {
+      captureMotion.startedAt = time;
+      explorer.react('danger');
+    }
+    const captureTime = captureMotion?.startedAt == null ? null : time - captureMotion.startedAt;
+    const capturePose = captureTime === null ? null : sampleCaptureMotion(captureTime);
+    applyFeatureStates();
     hero.getWorldPosition(heroWorld);
     for (const data of tiles.values()) {
-      data.hazard.update(time, { urgent: data.collapseDistance !== null, dt, heroPosition: state?.won ? null : heroWorld });
+      const capture = state?.caughtBy?.kind === 'crocodile' && state.caughtBy.index === data.index ? captureTime : null;
+      data.hazard.update(time, { urgent: data.collapseDistance !== null, dt,
+        heroPosition: state?.won || !hero.visible ? null : heroWorld, capture });
       if (data.engraving) {
         // Readable from above, near-invisible from the side: the glyph is lit only in top view.
         data.engraving.lift += ((topView ? 1 : 0) - data.engraving.lift) * (1 - Math.exp(-dt * 4));
@@ -960,8 +1057,10 @@ export function createGameScene(host, callbacks) {
       }
       if (data.stairs?.visible) data.stairs.userData.glow.emissiveIntensity = 1.1 + Math.sin(time * 2.2) * .35;
     }
-    if (pendingDescent && !heroMotion) { pendingDescent = false; explorer.react('curious'); callbacks.onDescent?.(); }
-    if (pendingTreasure && (!heroMotion || hero.position.distanceTo(cellPosition(state.relic.index)) < .55)) {
+    if (pendingDescent && hasReachedCell(heroMotion, state.hero)) {
+      pendingDescent = false; explorer.react('curious'); callbacks.onDescent?.();
+    }
+    if (pendingTreasure && hasReachedCell(heroMotion, state.relic.index)) {
       pendingTreasure = false; explorer.react('treasure');
     }
     let blanksChanged = false;
@@ -989,7 +1088,8 @@ export function createGameScene(host, callbacks) {
         const towards = guard.target.clone().sub(guard.actor.root.position);
         guard.actor.face(Math.atan2(towards.x, towards.z));
       }
-      guard.actor.update(time, dt, step > .02, { heroPosition: state?.won ? null : heroWorld });
+      const capture = state?.caughtBy?.kind === 'guardian' && state.caughtBy.index === guard.index ? captureTime : null;
+      guard.actor.update(time, dt, step > .02, { heroPosition: state?.won || !hero.visible ? null : heroWorld, capture });
       if (step > .01) tilesMoving = true;
       guard.marker.scale.setScalar(1 + Math.sin(time * 3.2) * .07);
     }
@@ -997,6 +1097,20 @@ export function createGameScene(host, callbacks) {
     for (const item of features) item.feature.update(time);
     const turn = Math.atan2(Math.sin(heroHeading - hero.rotation.y), Math.cos(heroHeading - hero.rotation.y));
     hero.rotation.y += turn * (1 - Math.exp(-frameDelta * 16));
+    if (capturePose) {
+      hero.position.copy(heroPosition(state.hero));
+      if (captureMotion.mouth) {
+        captureMotion.mouth.getWorldPosition(captureTarget);
+        world.worldToLocal(captureTarget);
+        hero.position.lerp(captureTarget, 1 - capturePose.heroScale);
+      }
+      hero.position.y += capturePose.heroLift;
+      hero.scale.setScalar(Math.max(.001, capturePose.heroScale));
+      hero.rotation.z = capturePose.heroTilt;
+      hero.visible = capturePose.heroScale > 0;
+      heroRing.visible = false;
+      captureMotion.complete = capturePose.complete;
+    }
     const skating=moving && [...tiles.values()].some(data=>data.tile.hazard==='ice' &&
       Math.abs(hero.position.x-data.group.position.x)<.67*boardProfile.sx &&
       Math.abs(hero.position.z-data.group.position.z)<.67*boardProfile.sz);
@@ -1013,15 +1127,15 @@ export function createGameScene(host, callbacks) {
         awareness.look = Math.atan2(Math.sin(angle), Math.cos(angle));
       }
     }
-    if (!state?.won) {
+    if (!state?.won && hero.visible) {
       for (const guard of guardians) notice(guard.actor.root.position, 'danger');
       for (const data of tiles.values()) {
         if (['crocodile', 'fragile', 'brittle'].includes(data.tile.hazard)) notice(data.group.position, 'danger');
       }
-      if (!awareness.danger && state?.relic && !state.relic.taken) notice(cellPosition(state.relic.index), 'interest');
+      if (!awareness.danger && state?.relic && !interactionState?.relicTaken) notice(cellPosition(state.relic.index), 'interest');
     }
     const gait = explorer.update(time, dt, { moving, distance, sliding:skating, ...awareness });
-    if (gait?.footfall) {
+    if (gait?.footfall && !capturePose && hero.visible) {
       callbacks.onFootfall?.();
       const footSide = gait.foot === 'left' ? -.1 : .1;
       for (let j = 0; j < 3; j++) {
@@ -1041,11 +1155,12 @@ export function createGameScene(host, callbacks) {
       bit.mesh.scale.setScalar(1 - bit.age * 2);
       bit.mesh.rotation.x += dt * 3;
     });
-    if (pendingSettle && !heroMotion && [...tiles.values()].every(tile =>
+    if (pendingSettle && !heroMotion && (!captureMotion || captureMotion.complete) && [...tiles.values()].every(tile =>
       tile.collapseDistance === null && tile.fallStartedAt === null &&
       Math.abs(tile.group.position.x - tile.target.x) + Math.abs(tile.group.position.z - tile.target.z) < 0.004)) {
       pendingSettle = false;
       if (pendingVictory) { winTime = time; pendingVictory = false; pendingTreasure = false; explorer.react('victory'); callbacks.onVictory?.(); }
+      if (pendingDefeat) { pendingDefeat = false; callbacks.onDefeat?.(); }
       updatePreview();
       callbacks.onSettled?.();
     }
@@ -1058,7 +1173,7 @@ export function createGameScene(host, callbacks) {
     portalCrystal.position.y = 1.54 + Math.sin(time * 1.5) * 0.045;
     portalRing.rotation.z = time * 0.15;
     portalRing.scale.setScalar(1 + Math.sin(time * 2) * 0.04);
-    portalLight.intensity = state?.canExit ? 5 : 1.5 + Math.sin(time) * 0.4;
+    portalLight.intensity = state?.canExit && interactionState?.gatesOpen === state.gatesOpen ? 5 : 1.5 + Math.sin(time) * 0.4;
     for (let i = 0; i < particleCount; i++) {
       const o = origins[i];
       positions[i * 3] = o.x + Math.sin(time * .12 + i) * .4;
@@ -1081,7 +1196,7 @@ export function createGameScene(host, callbacks) {
     } else sparksMat.opacity = 0;
     // A 2048 soft shadow map is the heaviest pass of the frame. Refresh it whenever something
     // actually moves, and otherwise idle at ~8 Hz so the ambient foliage sway still casts.
-    if (cameraMoved || cameraTransition || moving || tilesMoving || elapsed < 4 || now - shadowStamp > 120) {
+    if (cameraMoved || cameraTransition || moving || tilesMoving || capturePose && !capturePose.complete || elapsed < 4 || now - shadowStamp > 120) {
       renderer.shadowMap.needsUpdate = true;
       shadowStamp = now;
     }

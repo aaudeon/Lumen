@@ -167,3 +167,34 @@
 .victory-rumour.found{font-style:normal;color:#8fe0c4}
 .victory-reward{color:#a8ffdc}
 @media(max-width:700px){.descent-card{padding:30px 22px}.descent-card h2{font-size:24px}}
+
+.board-legend i.danger{background:#ff9e83;box-shadow:0 0 8px #ff9e8340}
+.dialog.defeat-dialog{max-width:420px;padding:32px;text-align:center;border-color:#e5a18b66;animation:arrive .3s ease-out}
+.defeat-symbol{display:grid;place-items:center;width:56px;height:56px;margin:0 auto 22px;border:1px solid #e5a18b55;border-radius:8px;color:#ffc8b5;background:#a15a4026}
+.defeat-dialog>.eyebrow{justify-content:center;color:#edb49f;letter-spacing:0;font-size:10px}
+.defeat-dialog h2{font-size:32px;letter-spacing:0}
+.defeat-message{margin:18px 0 0;color:#c4ccc5;font-size:13px;line-height:1.7}
+.defeat-actions{display:grid;gap:10px;margin-top:26px}
+.defeat-actions button{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-width:0;min-height:46px;padding:12px;font-size:12px;white-space:normal;letter-spacing:0}
+.defeat-actions svg{flex-shrink:0}
+@media(max-width:420px){.dialog.defeat-dialog{padding:26px 20px}.defeat-dialog h2{font-size:28px}}
+
+.game-shell[data-biome=space]{--gold:#edd29f;--mint:#a2eed2;background:#080e12}
+.game-shell[data-biome=space] .story-panel h1{font-family:'Manrope',sans-serif;font-weight:500;letter-spacing:0;font-size:42px}
+.volume-controls{position:absolute;top:calc(var(--safe-top) + 32px);left:var(--safe-left);right:var(--safe-right);display:flex;align-items:center;justify-content:center;gap:10px;pointer-events:auto}
+.volume-modes,.volume-vertical{display:flex;gap:2px;padding:3px;background:#101e20e8;border:1px solid #b6d5c43b;border-radius:6px}
+.volume-controls button{display:flex;align-items:center;justify-content:center;gap:6px;min-height:32px;min-width:32px;padding:6px 10px;font-size:10px;color:#bacac1;border-radius:3px;letter-spacing:0;white-space:nowrap}
+.volume-controls button[aria-pressed=true]{background:#a2eed226;color:#e1f4e6}
+.volume-controls select{height:40px;max-width:160px;padding:0 9px;background:#101e20ed;border:1px solid #b6d5c43b;border-radius:6px;color:#d4e5d9;font:11px 'Manrope',sans-serif}
+.volume-controls button:disabled{opacity:.4;cursor:default}
+.lunar-controls{gap:12px}
+.lunar-location{display:flex;align-items:center;gap:7px;color:#d9e2e8;font-size:11px;letter-spacing:0}
+.lunar-controls>button{border:1px solid #b6d5c43b;background:#131f27e8;border-radius:6px;min-height:40px}
+.game-shell.is-surface .story-panel h1{font-size:36px;letter-spacing:0}
+.game-shell.is-surface .story{color:#c2c9ce}
+@media(min-width:801px){.game-shell[data-biome=space] .topbar{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:20px}.game-shell[data-biome=space] .chapter-nav{position:static;transform:none;min-width:0;max-width:100%;justify-self:stretch;justify-content:flex-start;overflow-x:auto;scrollbar-width:thin;gap:5px}.game-shell[data-biome=space] .chapter-tab{flex-shrink:0}.game-shell[data-biome=space] .chapter-count{flex-shrink:0}}
+@media(max-width:800px){.game-shell.is-surface .story-panel h1{font-size:25px}.lunar-controls{gap:10px}}
+@media(max-width:800px){.game-shell[data-biome=space] .topbar{display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:38px 24px;gap:4px 8px;height:70px;align-items:center}.game-shell[data-biome=space] .brand{font-size:18px;gap:6px}.game-shell[data-biome=space] .brand-mark svg{width:26px}.game-shell[data-biome=space] .chapter-nav{grid-column:1/-1;grid-row:2;position:static;transform:none;width:100%;height:24px;min-width:0;max-width:100%;justify-content:center;overflow-x:auto;scrollbar-width:none}.game-shell[data-biome=space] .chapter-tab{height:24px;min-height:24px;padding:0}.game-shell[data-biome=space] .top-actions{grid-column:2;grid-row:1;justify-self:end;gap:4px}.game-shell[data-biome=space] .top-actions .wallet-badge{display:none}.game-shell[data-biome=space] .top-actions>button{width:26px;height:26px;min-width:0;padding:0}.game-shell[data-biome=space] .top-actions .dev-badge{width:auto;height:20px;padding:3px 4px;font-size:5px;letter-spacing:.4px}}
+.arrival-scene[data-biome=space] .arrival-veil{background:#071013a6}
+.arrival-scene[data-biome=space] .arrival-symbol,.arrival-scene[data-biome=space] h2 em{color:#bcebd9}
+@media(max-width:800px){.game-shell[data-biome=space] .story-panel h1{font-size:27px}.volume-controls{gap:5px;top:calc(var(--safe-top) + 28px)}.volume-controls button{padding:5px;gap:4px;min-height:30px;font-size:9px}.volume-controls select{font-size:9px;height:38px;max-width:125px}}
